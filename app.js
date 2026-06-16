@@ -19,7 +19,7 @@
   let state = {
     loc: loadLoc(), units: localStorage.getItem(LS.units) || 'c',
     forecast: null, air: null, clim: null, analysis: null, capeByDay: {}, capeByDate: {},
-    alerts: [], hourlyMetric: 'temp', timer: null
+    alerts: [], hourlyMetric: 'temp', faves: loadFaves(), timer: null
   };
   window.__aurora = state;
 
@@ -49,6 +49,25 @@
   function hhmm(iso) { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
   function esc(s) { return (s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
   function keyLoc() { return '.' + state.loc.lat.toFixed(2) + ',' + state.loc.lon.toFixed(2); }
+
+  /* ---------------- favorites ---------------- */
+  function loadFaves() { try { return JSON.parse(localStorage.getItem('aurora.faves')) || []; } catch (e) { return []; } }
+  function saveFaves() { localStorage.setItem('aurora.faves', JSON.stringify(state.faves)); }
+  function faveKey(l) { return l.lat.toFixed(3) + ',' + l.lon.toFixed(3); }
+  function isFave(l) { return state.faves.some(f => faveKey(f) === faveKey(l)); }
+  function starSvg() { return '<svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.79L12 17.77l-5.2 2.73.99-5.79-4.21-4.1 5.82-.85z"/></svg>'; }
+  function toggleFave() {
+    const k = faveKey(state.loc);
+    if (state.faves.some(f => faveKey(f) === k)) { state.faves = state.faves.filter(f => faveKey(f) !== k); toast('Removed ' + state.loc.name + ' from bookmarks'); }
+    else { state.faves.push({ name: state.loc.name, admin1: state.loc.admin1, country: state.loc.country, lat: state.loc.lat, lon: state.loc.lon }); toast('Bookmarked ' + state.loc.name); }
+    saveFaves(); renderFaves(); const st = $('#faveStar'); if (st) st.classList.toggle('on', isFave(state.loc));
+  }
+  function renderFaves() {
+    const el = $('#faves'); if (!el) return;
+    if (!state.faves.length) { el.innerHTML = ''; return; }
+    const cur = faveKey(state.loc);
+    el.innerHTML = '<div class="faves-row">' + state.faves.map((f, i) => `<span class="fave-chip ${faveKey(f) === cur ? 'active' : ''}"><button class="fc-go" data-i="${i}">${esc(f.name)}</button><button class="fc-rm" data-i="${i}" title="Remove bookmark" aria-label="Remove ${esc(f.name)}">×</button></span>`).join('') + '</div>';
+  }
 
   /* ---------------- weather icons ---------------- */
   function codeCat(code) {
@@ -208,7 +227,7 @@
     if (today && today.overRec) narr += 'A record-challenging day for the date.';
     else if (today && today.pctHi != null && today.pctHi >= 95) narr += `Among the warmest ${Math.round(100 - today.pctHi) || 1}% of days on record here for the season.`;
     $('#hero').innerHTML =
-      `<div class="hero-loc"><span class="dot"></span>${esc(place)}</div>
+      `<div class="hero-loc"><span class="dot"></span><span class="hloc-name">${esc(place)}</span><button class="fave-star ${isFave(state.loc) ? 'on' : ''}" id="faveStar" title="Bookmark this place" aria-label="Bookmark this place">${starSvg()}</button></div>
        <div class="hero-main"><div class="hero-ic float">${icon(c.weather_code, c.is_day === 1, true)}</div><div class="hero-temp">${fmtT(c.temperature_2m)}</div>
        <div class="hero-right"><div class="hero-cond">${WMO[c.weather_code] || '—'}</div><div class="hero-feels">Feels like ${fmtT(c.apparent_temperature)}</div>
        <div class="hero-hl"><span>H <b>${fmtT(today && today.hi)}</b></span><span>L <b>${fmtT(today && today.lo)}</b></span></div></div></div>
@@ -410,6 +429,7 @@
       if (state.clim) renderHistory(fc, state.analysis, state.clim); else $('#history').innerHTML = '<div class="chart-card">Historical data unavailable for this location.</div>';
       state.alerts = buildAlerts(state.analysis, state.clim || fallback, cape);
       renderAlerts(state.alerts);
+      renderFaves();
       maybeNotify();
       setUpdated(); showLoading(false);
     } catch (e) {
@@ -439,6 +459,13 @@
   $('#daily').addEventListener('click', e => { const row = e.target.closest('.drow'); if (row) toggleDay(+row.dataset.i, row); });
   $('#daily').addEventListener('keydown', e => { const row = e.target.closest('.drow'); if (row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggleDay(+row.dataset.i, row); } });
   $('#hourlyToggle').addEventListener('click', e => { const b = e.target.closest('button[data-m]'); if (!b) return; state.hourlyMetric = b.dataset.m; [...$('#hourlyToggle').children].forEach(x => x.classList.toggle('active', x === b)); renderHourlyChart(); });
+  $('#faves').addEventListener('click', e => {
+    const rm = e.target.closest('.fc-rm');
+    if (rm) { state.faves.splice(+rm.dataset.i, 1); saveFaves(); renderFaves(); const st = $('#faveStar'); if (st) st.classList.toggle('on', isFave(state.loc)); return; }
+    const go = e.target.closest('.fc-go');
+    if (go) { const f = state.faves[+go.dataset.i]; if (f) setLocation({ name: f.name, admin1: f.admin1, country: f.country, lat: f.lat, lon: f.lon }); }
+  });
+  $('#hero').addEventListener('click', e => { if (e.target.closest('#faveStar')) toggleFave(); });
 
   $('#geoBtn').addEventListener('click', () => {
     if (!navigator.geolocation) { toast('Geolocation not available'); return; } toast('Locating…');
@@ -465,6 +492,7 @@
     applyTheme(localStorage.getItem(LS.theme) || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
     $('#unitBtn').textContent = state.units === 'c' ? '°C' : '°F';
     setBell();
+    renderFaves();
     load(true);
     if (state.timer) clearInterval(state.timer);
     state.timer = setInterval(() => load(false), 15 * 60 * 1000);
