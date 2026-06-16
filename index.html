@@ -15,6 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -76,6 +77,21 @@
         <div id="hourly" class="hourly"></div>
       </section>
 
+      <h2 class="section-title">Storm &amp; extreme-weather radar <span class="title-sub">— live radar + forecast extremes</span></h2>
+      <section class="card radar-card">
+        <div class="radarbar">
+          <div class="seg-toggle" id="scopeToggle"><button data-scope="near" class="active">Near me</button><button data-scope="country">Country</button></div>
+          <div class="seg-toggle" id="radiusChips"><button data-r="25">25 km</button><button data-r="50" class="active">50 km</button><button data-r="100">100 km</button></div>
+          <select id="countrySel" class="map-select" style="display:none" aria-label="Select country"></select>
+          <button id="radarToggle" class="icon-btn text-btn" style="width:auto;padding:0 14px" title="Toggle live precipitation radar">Radar</button>
+          <button id="radarPlay" class="icon-btn" title="Play radar animation" style="display:none">▶</button>
+          <span id="radarTime" class="map-status" style="margin:0"></span>
+        </div>
+        <div id="map"></div>
+        <div id="mapStatus" class="map-status">Scroll down to load the radar…</div>
+        <div id="mapLegend" class="map-legend"></div>
+      </section>
+
       <h2 class="section-title">14-day forecast <span class="title-sub">— tap a day for details</span></h2>
       <section id="daily" class="daily card"></section>
 
@@ -93,6 +109,7 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

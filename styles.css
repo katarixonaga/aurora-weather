@@ -4,13 +4,13 @@
   --maxw:1080px;
   --radius:22px;
   --radius-sm:14px;
-  --card:rgba(18,24,38,.6);
-  --card-hover:rgba(32,40,58,.74);
-  --brd:rgba(255,255,255,.14);
-  --brd-strong:rgba(255,255,255,.26);
-  --text:#f4f7fc;
-  --muted:#c4cede;
-  --faint:#9da9bd;
+  --card:rgba(16,21,33,.86);
+  --card-hover:rgba(30,38,56,.94);
+  --brd:rgba(255,255,255,.16);
+  --brd-strong:rgba(255,255,255,.28);
+  --text:#f5f8fc;
+  --muted:#cdd6e4;
+  --faint:#a8b2c4;
   --shadow:0 10px 34px rgba(0,0,0,.28);
   --blur:blur(20px) saturate(150%);
   --accent:#86a8ff;
@@ -18,13 +18,13 @@
   --heat:#ff7a45;--storm:#a98bff;--rain:#56b6f0;--snow:#cfe8ff;--wind:#9fb0c4;--coldA:#6aa8ff;
 }
 html[data-theme="light"]{
-  --card:rgba(255,255,255,.82);
-  --card-hover:rgba(255,255,255,.92);
-  --brd:rgba(15,23,42,.14);
-  --brd-strong:rgba(15,23,42,.22);
-  --text:#0c1726;
-  --muted:#36475d;
-  --faint:#536580;
+  --card:rgba(255,255,255,.9);
+  --card-hover:rgba(255,255,255,.98);
+  --brd:rgba(15,23,42,.15);
+  --brd-strong:rgba(15,23,42,.24);
+  --text:#0b1524;
+  --muted:#2f4055;
+  --faint:#48596f;
   --shadow:0 10px 30px rgba(15,23,42,.14);
   --accent:#2f5fd0;
 }
@@ -40,8 +40,8 @@ body{
 }
 a{color:inherit}
 .bg{position:fixed;inset:0;z-index:-2;background:linear-gradient(160deg,#1b2550,#141c3c 55%,#0b1024);transition:background 1.2s ease}
-.bgveil{position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(120% 80% at 50% -10%,rgba(255,255,255,.10),transparent 60%)}
-html[data-theme="light"] .bgveil{background:radial-gradient(130% 90% at 50% -10%,rgba(255,255,255,.65),rgba(255,255,255,.25) 55%,rgba(255,255,255,.12))}
+.bgveil{position:fixed;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(rgba(9,12,20,.5),rgba(9,12,20,.62)),radial-gradient(120% 80% at 50% -10%,rgba(255,255,255,.06),transparent 55%)}
+html[data-theme="light"] .bgveil{background:linear-gradient(rgba(247,249,253,.66),rgba(247,249,253,.74))}
 
 .app{max-width:var(--maxw);margin:0 auto;padding:18px 18px 40px;position:relative}
 
@@ -74,6 +74,8 @@ html[data-theme="light"] .bgveil{background:radial-gradient(130% 90% at 50% -10%
 .section-title{font-size:15px;font-weight:600;color:var(--text);margin:26px 4px 12px;letter-spacing:.01em}
 html[data-theme="dark"] .section-title{text-shadow:0 1px 3px rgba(0,0,0,.5)}
 html[data-theme="light"] .section-title{text-shadow:0 1px 2px rgba(255,255,255,.7)}
+html[data-theme="dark"] .brand-name,html[data-theme="dark"] .brand-sub{text-shadow:0 1px 2px rgba(0,0,0,.45)}
+html[data-theme="light"] .brand-name,html[data-theme="light"] .brand-sub{text-shadow:0 1px 2px rgba(255,255,255,.55)}
 .title-sub{font-weight:400;color:var(--muted)}
 .main>*{animation:rise .5s ease both}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
@@ -272,3 +274,17 @@ html[data-theme="light"] .foot{text-shadow:0 1px 2px rgba(255,255,255,.6)}
 .fave-star svg{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round}
 .fave-star.on{color:#ffc24a}
 .fave-star.on svg{fill:#ffc24a;stroke:#ffc24a}
+
+/* radar / extreme-weather map */
+.radar-card{padding:16px 16px 14px;margin-bottom:6px}
+.radarbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.map-select{height:34px;border-radius:999px;border:1px solid var(--brd);background:var(--card);color:var(--text);font:inherit;font-size:13px;padding:0 12px;cursor:pointer}
+#map{height:380px;width:100%;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--brd);z-index:0}
+.leaflet-container{font-family:inherit;background:#0d1320}
+html[data-theme="light"] .leaflet-container{background:#e8edf3}
+.leaflet-popup-content{font-family:inherit;font-size:13px;line-height:1.5}
+.map-status{font-size:13px;color:var(--muted);margin-top:9px}
+.map-legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--muted);margin-top:8px}
+.map-legend .dot{width:11px;height:11px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:-1px}
+#radarToggle.on{border-color:var(--rain);color:var(--rain)}
+@media(max-width:560px){#map{height:320px}}

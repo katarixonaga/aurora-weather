@@ -19,7 +19,8 @@
   let state = {
     loc: loadLoc(), units: localStorage.getItem(LS.units) || 'c',
     forecast: null, air: null, clim: null, analysis: null, capeByDay: {}, capeByDate: {},
-    alerts: [], hourlyMetric: 'temp', faves: loadFaves(), timer: null
+    alerts: [], hourlyMetric: 'temp', faves: loadFaves(), timer: null,
+    map: { inited: false, leaflet: null, baseLayer: null, radarLayer: null, markers: [], center: null, circle: null, scope: 'near', radius: 50, country: 'DE', radarOn: false, frames: [], radarHost: '', radarIdx: 0, radarTimer: null }
   };
   window.__aurora = state;
 
@@ -404,6 +405,104 @@
   }
   function setBell() { const on = ('Notification' in window) && Notification.permission === 'granted'; const b = $('#bellBtn'); if (b) { b.classList.toggle('on', on); b.title = on ? 'Extreme-weather alerts are on' : 'Enable extreme-weather alerts'; } }
 
+  /* ---------------- radar / extreme-weather map ---------------- */
+  const COUNTRIES = [
+    { code: 'DE', name: 'Germany', bbox: [47.27, 5.87, 55.06, 15.04] },
+    { code: 'AT', name: 'Austria', bbox: [46.37, 9.53, 49.02, 17.16] },
+    { code: 'CH', name: 'Switzerland', bbox: [45.82, 5.96, 47.81, 10.49] },
+    { code: 'FR', name: 'France', bbox: [41.33, -5.14, 51.09, 9.56] },
+    { code: 'NL', name: 'Netherlands', bbox: [50.75, 3.36, 53.55, 7.23] },
+    { code: 'BE', name: 'Belgium', bbox: [49.5, 2.55, 51.5, 6.41] },
+    { code: 'GB', name: 'United Kingdom', bbox: [49.9, -8.65, 58.7, 1.76] },
+    { code: 'IT', name: 'Italy', bbox: [36.6, 6.6, 47.1, 18.5] },
+    { code: 'ES', name: 'Spain', bbox: [36.0, -9.3, 43.8, 3.32] },
+    { code: 'PL', name: 'Poland', bbox: [49.0, 14.12, 54.84, 24.15] },
+    { code: 'US', name: 'United States', bbox: [24.5, -125, 49.4, -66.9] }
+  ];
+  const MAPCOLORS = { heat: ['#ff6a3d', 'Heat'], storm: ['#9b7bf2', 'Storm'], wind: ['#8b97ab', 'Wind'], rain: ['#2f9be0', 'Heavy rain'], snow: ['#84c4ff', 'Snow'] };
+
+  function distBearing(la1, lo1, la2, lo2) {
+    const R = 6371, toR = x => x * Math.PI / 180, dLat = toR(la2 - la1), dLon = toR(lo2 - lo1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toR(la1)) * Math.cos(toR(la2)) * Math.sin(dLon / 2) ** 2;
+    const km = Math.round(2 * R * Math.asin(Math.min(1, Math.sqrt(a))));
+    const y = Math.sin(dLon) * Math.cos(toR(la2)), x = Math.cos(toR(la1)) * Math.sin(toR(la2)) - Math.sin(toR(la1)) * Math.cos(toR(la2)) * Math.cos(dLon);
+    const dir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(((Math.atan2(y, x) * 180 / Math.PI + 360) % 360) / 45) % 8];
+    return { km, dir };
+  }
+  function gridNear(la, lo, R) { const step = R / 4, latD = step / 111, lonD = step / (111 * Math.cos(la * Math.PI / 180)), pts = []; for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const a = la + dy * latD, b = lo + dx * lonD; if (distBearing(la, lo, a, b).km <= R) pts.push([a, b]); } return pts; }
+  function gridCountry(b) { const ny = 11, nx = 13, pts = []; for (let i = 0; i < ny; i++) for (let j = 0; j < nx; j++) pts.push([b[0] + (b[2] - b[0]) * (i + .5) / ny, b[1] + (b[3] - b[1]) * (j + .5) / nx]); return pts; }
+  function radiusZoom(R) { return R <= 25 ? 10 : R <= 50 ? 9 : 8; }
+  function baseUrl(dark) { return 'https://{s}.basemaps.cartocdn.com/' + (dark ? 'dark_all' : 'light_all') + '/{z}/{x}/{y}{r}.png'; }
+  function addBase() { const dark = document.documentElement.getAttribute('data-theme') !== 'light'; if (state.map.baseLayer) state.map.leaflet.removeLayer(state.map.baseLayer); state.map.baseLayer = L.tileLayer(baseUrl(dark), { attribution: '© OpenStreetMap, © CARTO', subdomains: 'abcd', maxZoom: 18 }).addTo(state.map.leaflet); state.map.baseLayer.bringToBack(); }
+  function setMapStatus(t) { const e = $('#mapStatus'); if (e) e.textContent = t; }
+  function clearMarkers() { state.map.markers.forEach(m => state.map.leaflet.removeLayer(m)); state.map.markers = []; }
+  function clearCenter() { if (state.map.circle) { state.map.leaflet.removeLayer(state.map.circle); state.map.circle = null; } if (state.map.center) { state.map.leaflet.removeLayer(state.map.center); state.map.center = null; } }
+  function drawCenter(c, R) { clearCenter(); state.map.circle = L.circle(c, { radius: R * 1000, color: '#86a8ff', weight: 1, fillColor: '#86a8ff', fillOpacity: .05 }).addTo(state.map.leaflet); state.map.center = L.circleMarker(c, { radius: 5, color: '#fff', weight: 2, fillColor: '#86a8ff', fillOpacity: 1 }).addTo(state.map.leaflet).bindPopup('You: ' + esc(state.loc.name)); }
+  function detectExtreme(it) {
+    if (!it || !it.daily) return null;
+    const d = it.daily, c = it.current || {}, mx = a => { const v = a.filter(x => x != null); return v.length ? Math.max(...v) : -Infinity; };
+    const tmax = mx([d.temperature_2m_max[0], d.temperature_2m_max[1]]), gust = mx([d.wind_gusts_10m_max[0], d.wind_gusts_10m_max[1], c.wind_gusts_10m]);
+    const rain = mx([d.precipitation_sum[0], d.precipitation_sum[1]]), snow = mx([d.snowfall_sum[0], d.snowfall_sum[1]]);
+    const codes = [c.weather_code, d.weather_code[0], d.weather_code[1]].filter(x => x != null), cand = [];
+    if (codes.some(x => x >= 95)) cand.push({ type: 'storm', sev: codes.some(x => x >= 96) ? 'severe' : 'high', value: 'Thunderstorm', rank: 5 });
+    if (tmax >= 32) cand.push({ type: 'heat', sev: tmax >= 37 ? 'severe' : tmax >= 35 ? 'high' : 'moderate', value: Math.round(tmax) + '° heat', rank: 4 });
+    if (gust >= 60) cand.push({ type: 'wind', sev: gust >= 90 ? 'severe' : gust >= 75 ? 'high' : 'moderate', value: Math.round(gust) + ' km/h gusts', rank: 3 });
+    if (rain >= 25) cand.push({ type: 'rain', sev: rain >= 40 ? 'severe' : 'high', value: Math.round(rain) + ' mm rain', rank: 2 });
+    if (snow >= 5) cand.push({ type: 'snow', sev: snow >= 15 ? 'high' : 'moderate', value: Math.round(snow) + ' cm snow', rank: 1 });
+    if (!cand.length) return null;
+    const so = { severe: 3, high: 2, moderate: 1 };
+    cand.sort((a, b) => so[b.sev] - so[a.sev] || b.rank - a.rank);
+    return cand[0];
+  }
+  async function fetchScan(points) {
+    const chunks = []; for (let i = 0; i < points.length; i += 100) chunks.push(points.slice(i, i + 100));
+    const all = [];
+    await Promise.all(chunks.map(async ch => {
+      const lats = ch.map(p => p[0].toFixed(4)).join(','), lons = ch.map(p => p[1].toFixed(4)).join(',');
+      const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lats + '&longitude=' + lons + '&current=weather_code,temperature_2m,wind_gusts_10m,precipitation&daily=weather_code,temperature_2m_max,wind_gusts_10m_max,precipitation_sum,snowfall_sum&forecast_days=2&timezone=auto&wind_speed_unit=kmh';
+      const r = await fetch(url); if (!r.ok) throw new Error('scan ' + r.status);
+      const d = await r.json(), arr = Array.isArray(d) ? d : [d];
+      arr.forEach((item, i) => { if (ch[i]) all.push({ lat: ch[i][0], lon: ch[i][1], data: item }); });
+    }));
+    return all;
+  }
+  function renderPins(events, center) {
+    clearMarkers();
+    events.forEach(e => {
+      const m = L.circleMarker([e.lat, e.lon], { radius: e.sev === 'severe' ? 9 : e.sev === 'high' ? 7 : 6, color: '#fff', weight: 1, fillColor: (MAPCOLORS[e.type] || ['#fff'])[0], fillOpacity: .92 });
+      let pop = '<b>' + e.value + '</b><br>' + e.type[0].toUpperCase() + e.type.slice(1) + ' · ' + e.sev;
+      if (center) { const db = distBearing(center[0], center[1], e.lat, e.lon); pop += '<br>' + db.km + ' km ' + db.dir; }
+      m.bindPopup(pop); m.addTo(state.map.leaflet); state.map.markers.push(m);
+    });
+    const counts = {}; events.forEach(e => counts[e.type] = (counts[e.type] || 0) + 1);
+    const el = $('#mapLegend'); if (el) el.innerHTML = Object.keys(MAPCOLORS).filter(k => counts[k]).map(k => `<span><span class="dot" style="background:${MAPCOLORS[k][0]}"></span>${MAPCOLORS[k][1]} (${counts[k]})</span>`).join('');
+  }
+  async function scanArea() {
+    if (!state.map.inited) return;
+    setMapStatus('Scanning for extreme weather…');
+    let points, center = null;
+    if (state.map.scope === 'near') { center = [state.loc.lat, state.loc.lon]; points = gridNear(center[0], center[1], state.map.radius); drawCenter(center, state.map.radius); state.map.leaflet.setView(center, radiusZoom(state.map.radius)); }
+    else { const c = COUNTRIES.find(x => x.code === state.map.country) || COUNTRIES[0]; points = gridCountry(c.bbox); clearCenter(); state.map.leaflet.fitBounds([[c.bbox[0], c.bbox[1]], [c.bbox[2], c.bbox[3]]]); }
+    try {
+      const results = await fetchScan(points), events = [];
+      results.forEach(r => { const e = detectExtreme(r.data); if (e) events.push(Object.assign(e, { lat: r.lat, lon: r.lon })); });
+      renderPins(events, center);
+      const area = state.map.scope === 'near' ? ('within ' + state.map.radius + ' km of ' + state.loc.name) : ((COUNTRIES.find(x => x.code === state.map.country) || {}).name || '');
+      setMapStatus(events.length ? (events.length + ' extreme-weather spot' + (events.length > 1 ? 's' : '') + ' ' + area + ' (next 48 h)') : ('All clear — no extreme weather ' + area + ' (next 48 h)'));
+    } catch (e) { console.warn('scan failed', e); setMapStatus('Scan failed — check your connection and retry.'); }
+  }
+  async function loadRadar() { if (state.map.frames.length) return true; try { const r = await fetch('https://api.rainviewer.com/public/weather-maps.json'), d = await r.json(); state.map.radarHost = d.host; state.map.frames = [...(d.radar && d.radar.past || []), ...(d.radar && d.radar.nowcast || [])]; return state.map.frames.length > 0; } catch (e) { return false; } }
+  function showFrame(i) { const f = state.map.frames[i]; if (!f) return; if (state.map.radarLayer) state.map.leaflet.removeLayer(state.map.radarLayer); state.map.radarLayer = L.tileLayer(state.map.radarHost + f.path + '/256/{z}/{x}/{y}/2/1_1.png', { opacity: .6, zIndex: 400 }).addTo(state.map.leaflet); state.map.radarIdx = i; const el = $('#radarTime'); if (el) el.textContent = 'Radar ' + new Date(f.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+  async function toggleRadar() {
+    if (!state.map.inited) initMap();
+    state.map.radarOn = !state.map.radarOn; $('#radarToggle').classList.toggle('on', state.map.radarOn);
+    if (state.map.radarOn) { const ok = await loadRadar(); if (!ok) { toast('Radar unavailable right now'); state.map.radarOn = false; $('#radarToggle').classList.remove('on'); return; } showFrame(state.map.frames.length - 1); $('#radarPlay').style.display = ''; }
+    else { if (state.map.radarLayer) { state.map.leaflet.removeLayer(state.map.radarLayer); state.map.radarLayer = null; } stopRadar(); $('#radarPlay').style.display = 'none'; const el = $('#radarTime'); if (el) el.textContent = ''; }
+  }
+  function playRadar() { if (state.map.radarTimer) { stopRadar(); return; } const p = $('#radarPlay'); if (p) p.textContent = '⏸'; state.map.radarTimer = setInterval(() => showFrame((state.map.radarIdx + 1) % state.map.frames.length), 700); }
+  function stopRadar() { if (state.map.radarTimer) { clearInterval(state.map.radarTimer); state.map.radarTimer = null; } const p = $('#radarPlay'); if (p) p.textContent = '▶'; }
+  function initMap() { if (state.map.inited || !window.L) return; const m = L.map('map', { scrollWheelZoom: false, zoomControl: true, attributionControl: true }); state.map.leaflet = m; addBase(); m.setView([state.loc.lat, state.loc.lon], 9); state.map.inited = true; setTimeout(() => m.invalidateSize(), 150); scanArea(); }
+
   /* ---------------- orchestration ---------------- */
   function setUpdated() { $('#updated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' · auto-refreshes every 15 min'; }
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2800); }
@@ -438,7 +537,7 @@
       const r = $('#retry'); if (r) r.onclick = ev => { ev.preventDefault(); load(true); };
     }
   }
-  function setLocation(loc) { state.loc = loc; localStorage.setItem(LS.loc, JSON.stringify(loc)); state.clim = null; closeSearch(); $('#searchInput').value = ''; load(true); }
+  function setLocation(loc) { state.loc = loc; localStorage.setItem(LS.loc, JSON.stringify(loc)); state.clim = null; closeSearch(); $('#searchInput').value = ''; load(true); if (state.map.inited && state.map.scope === 'near') scanArea(); }
   function reRender() { if (!state.forecast) return; renderHero(state.forecast, state.analysis); renderDetails(state.forecast, state.analysis); renderHourly(state.forecast); renderHourlyChart(); renderAir(state.air); renderDaily(state.analysis, state.capeByDate); if (state.clim) renderHistory(state.forecast, state.analysis, state.clim); renderAlerts(state.alerts); }
 
   /* ---------------- events ---------------- */
@@ -466,6 +565,11 @@
     if (go) { const f = state.faves[+go.dataset.i]; if (f) setLocation({ name: f.name, admin1: f.admin1, country: f.country, lat: f.lat, lon: f.lon }); }
   });
   $('#hero').addEventListener('click', e => { if (e.target.closest('#faveStar')) toggleFave(); });
+  $('#scopeToggle').addEventListener('click', e => { const b = e.target.closest('button[data-scope]'); if (!b) return; state.map.scope = b.dataset.scope; [...$('#scopeToggle').children].forEach(x => x.classList.toggle('active', x === b)); $('#radiusChips').style.display = state.map.scope === 'near' ? '' : 'none'; $('#countrySel').style.display = state.map.scope === 'country' ? '' : 'none'; state.map.inited ? scanArea() : initMap(); });
+  $('#radiusChips').addEventListener('click', e => { const b = e.target.closest('button[data-r]'); if (!b) return; state.map.radius = +b.dataset.r; [...$('#radiusChips').children].forEach(x => x.classList.toggle('active', x === b)); state.map.inited ? scanArea() : initMap(); });
+  $('#countrySel').addEventListener('change', e => { state.map.country = e.target.value; state.map.inited ? scanArea() : initMap(); });
+  $('#radarToggle').addEventListener('click', toggleRadar);
+  $('#radarPlay').addEventListener('click', playRadar);
 
   $('#geoBtn').addEventListener('click', () => {
     if (!navigator.geolocation) { toast('Geolocation not available'); return; } toast('Locating…');
@@ -476,6 +580,7 @@
     document.documentElement.setAttribute('data-theme', t); localStorage.setItem(LS.theme, t);
     $('#themeIcon').innerHTML = t === 'light' ? '<circle cx="12" cy="12" r="5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="5" y1="5" x2="6.5" y2="6.5"/><line x1="17.5" y1="17.5" x2="19" y2="19"/><line x1="5" y1="19" x2="6.5" y2="17.5"/><line x1="17.5" y1="6.5" x2="19" y2="5"/></g>' : '<path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" fill="currentColor"/>';
     if (state.forecast) { renderHourlyChart(); if (state.clim) drawChart(state.analysis.slice(0, 14)); }
+    if (state.map.inited) addBase();
   }
   $('#themeBtn').addEventListener('click', () => applyTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'));
   $('#refreshBtn').addEventListener('click', () => { toast('Refreshing…'); load(false); });
@@ -497,5 +602,12 @@
     if (state.timer) clearInterval(state.timer);
     state.timer = setInterval(() => load(false), 15 * 60 * 1000);
     if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js').catch(() => {});
+    const cs = $('#countrySel'); if (cs) cs.innerHTML = COUNTRIES.map(c => `<option value="${c.code}"${c.code === state.map.country ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
+    const mapEl = $('#map');
+    if (mapEl) {
+      if (window.IntersectionObserver) { const mo = new IntersectionObserver(es => { es.forEach(e => { if (e.isIntersecting) { initMap(); mo.disconnect(); } }); }, { rootMargin: '300px' }); mo.observe(mapEl); }
+      window.addEventListener('scroll', () => initMap(), { once: true, passive: true });
+      window.addEventListener('resize', () => { if (state.map.leaflet) state.map.leaflet.invalidateSize(); });
+    }
   })();
 })();
