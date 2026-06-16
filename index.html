@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+<meta name="color-scheme" content="dark light" />
+<meta name="theme-color" content="#0b1220" />
+<meta name="description" content="Aurora — live weather with extreme-weather alerts and 10-year historical context." />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>Aurora Weather</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon.svg" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="bg" class="bg"></div>
+  <div id="bgveil" class="bgveil"></div>
+
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" width="26" height="26"><circle cx="16" cy="16" r="7" fill="#FDB813"/><g stroke="#FDB813" stroke-width="2.4" stroke-linecap="round"><line x1="16" y1="2" x2="16" y2="6"/><line x1="16" y1="26" x2="16" y2="30"/><line x1="2" y1="16" x2="6" y2="16"/><line x1="26" y1="16" x2="30" y2="16"/><line x1="6.3" y1="6.3" x2="9.1" y2="9.1"/><line x1="22.9" y1="22.9" x2="25.7" y2="25.7"/><line x1="6.3" y1="25.7" x2="9.1" y2="22.9"/><line x1="22.9" y1="9.1" x2="25.7" y2="6.3"/></g></svg>
+        </div>
+        <div class="brand-text">
+          <div class="brand-name">Aurora</div>
+          <div class="brand-sub">live weather &amp; climate</div>
+        </div>
+      </div>
+
+      <div class="search">
+        <svg class="search-ic" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><line x1="16.5" y1="16.5" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="searchInput" type="text" placeholder="Search any city or town…" autocomplete="off" spellcheck="false" aria-label="Search location" />
+        <div id="searchResults" class="search-results" role="listbox"></div>
+      </div>
+
+      <div class="actions">
+        <button id="geoBtn" class="icon-btn" title="Use my location" aria-label="Use my location">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg>
+        </button>
+        <button id="bellBtn" class="icon-btn" title="Enable extreme-weather alerts" aria-label="Enable extreme-weather alerts">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.7 21a2 2 0 0 1-3.4 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <button id="unitBtn" class="icon-btn text-btn" title="Switch units" aria-label="Switch temperature units">°C</button>
+        <button id="themeBtn" class="icon-btn" title="Switch theme" aria-label="Switch theme">
+          <svg id="themeIcon" viewBox="0 0 24 24" width="18" height="18"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" fill="currentColor"/></svg>
+        </button>
+        <button id="refreshBtn" class="icon-btn" title="Refresh now" aria-label="Refresh">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M20 11a8 8 0 1 0-.6 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main id="main" class="main">
+      <section id="alerts" class="alerts" aria-live="polite"></section>
+      <section id="hero" class="hero card"></section>
+      <section id="details" class="details"></section>
+
+      <h2 class="section-title">Air quality &amp; pollen</h2>
+      <section id="air" class="air"></section>
+
+      <h2 class="section-title">Hourly forecast <span class="title-sub">— next 48 hours</span></h2>
+      <section class="card hourly-card">
+        <div class="seg-toggle" id="hourlyToggle">
+          <button data-m="temp" class="active">Temperature</button>
+          <button data-m="rain">Precipitation</button>
+          <button data-m="wind">Wind gusts</button>
+        </div>
+        <div class="chart-wrap" style="height:180px"><canvas id="hourlyChart" role="img" aria-label="Hourly forecast chart for the next 48 hours."></canvas></div>
+        <div id="hourly" class="hourly"></div>
+      </section>
+
+      <h2 class="section-title">14-day forecast <span class="title-sub">— tap a day for details</span></h2>
+      <section id="daily" class="daily card"></section>
+
+      <h2 class="section-title">Learning from the past <span class="title-sub">— this forecast vs. 10 years of local climate</span></h2>
+      <section id="history" class="history"></section>
+    </main>
+
+    <footer class="foot">
+      <span id="updated" class="updated"></span>
+      <span class="src">Data: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> · live forecast + air quality + ERA5 reanalysis · runs entirely in your browser, no tracking.</span>
+    </footer>
+  </div>
+
+  <div id="loading" class="loading"><div class="spinner"></div><div class="loading-text">Reading the sky…</div></div>
+  <div id="toast" class="toast"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
