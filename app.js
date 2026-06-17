@@ -21,7 +21,7 @@
 
   let state = {
     loc: loadLoc(), units: localStorage.getItem(LS.units) || 'c', lang: localStorage.getItem('aurora.lang') || ((navigator.language || 'en').toLowerCase().indexOf('de') === 0 ? 'de' : 'en'),
-    forecast: null, air: null, clim: null, analysis: null, capeByDay: {}, capeByDate: {}, nowcast: null, longData: null, stripesLoc: null,
+    forecast: null, air: null, clim: null, analysis: null, stormByDay: {}, stormByDate: {}, nowcast: null, longData: null, stripesLoc: null,
     alerts: [], hourlyMetric: 'temp', faves: loadFaves(), timer: null,
     map: { inited: false, leaflet: null, baseLayer: null, radarLayer: null, markers: [], center: null, circle: null, scope: 'near', radius: 50, country: 'DE', radarOn: false, frames: [], radarHost: '', radarIdx: 0, radarTimer: null }
   };
@@ -57,6 +57,7 @@
   function esc(s) { return (s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
   function safeHttpUrl(u) { try { const p = new URL(u); return (p.protocol === 'https:' || p.protocol === 'http:') ? u : ''; } catch (e) { return ''; } }
   function keyLoc() { return '.' + state.loc.lat.toFixed(2) + ',' + state.loc.lon.toFixed(2); }
+  function bulkShear(s10, d10, s500, d500) { const R = Math.PI / 180, a = (s10 || 0) / 3.6, b = (s500 || 0) / 3.6, u1 = -a * Math.sin((d10 || 0) * R), v1 = -a * Math.cos((d10 || 0) * R), u2 = -b * Math.sin((d500 || 0) * R), v2 = -b * Math.cos((d500 || 0) * R); return Math.sqrt((u2 - u1) ** 2 + (v2 - v1) ** 2); }
 
   /* ---------------- favorites ---------------- */
   function loadFaves() { try { return JSON.parse(localStorage.getItem('aurora.faves')) || []; } catch (e) { return []; } }
@@ -122,7 +123,7 @@
     const p = new URLSearchParams({
       latitude: loc.lat, longitude: loc.lon,
       current: 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index',
-      hourly: 'temperature_2m,precipitation_probability,precipitation,weather_code,wind_gusts_10m,is_day,cape',
+      hourly: 'temperature_2m,precipitation_probability,precipitation,weather_code,wind_gusts_10m,is_day,cape,convective_inhibition,wind_speed_10m,wind_direction_10m,wind_speed_500hPa,wind_direction_500hPa',
       daily: 'weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_gusts_10m_max,snowfall_sum',
       timezone: 'auto', forecast_days: 16, wind_speed_unit: 'kmh'
     });
@@ -189,32 +190,49 @@
   }
 
   /* ---------------- alerts ---------------- */
-  function rangeStr(days) { return days.length === 1 ? fmtDay(days[0].date) : fmtWD(days[0].date) + '–' + fmtDay(days[days.length - 1].date); }
-  function buildAlerts(an, clim, cape) {
+  function isContiguous(days) { for (let i = 1; i < days.length; i++) { if (Math.round((dnum(days[i].date) - dnum(days[i - 1].date)) / 864e5) !== 1) return false; } return true; }
+  function rangeStr(days, pk) { if (days.length === 1) return fmtDay(days[0].date); if (isContiguous(days)) return fmtDay(days[0].date) + '–' + fmtDay(days[days.length - 1].date); return tr('al_when_days', { n: days.length, day: pk ? fmtDay(pk.date) : fmtDay(days[0].date) }); }
+  function stormLevel(cape, cin, shear, code) {
+    if (code >= 96) return 'severe';
+    if (code >= 95) return 'high';
+    if (cape < 500) return null;
+    if (cin > 200) return cape >= 2500 ? 'moderate' : null;
+    const capped = cin > 75;
+    if (cape < 1500 && capped) return null;
+    let level = cape >= 2500 ? 'high' : 'moderate';
+    const bump = l => l === 'high' ? 'severe' : l === 'moderate' ? 'high' : l, unbump = l => l === 'severe' ? 'high' : l === 'high' ? 'moderate' : l;
+    if (shear >= 20 && cape >= 2000 && !capped) level = 'severe';
+    else if (shear >= 18 && cape >= 1500) level = bump(level);
+    if (capped) level = unbump(level);
+    return level;
+  }
+  function buildAlerts(an, clim, sb) {
     const A = [], rec = clim.rec || { hi: { v: 99 }, rain: { v: 99 } };
     const heat = an.filter(a => a.hi >= 30 && (a.hi >= 32 || a.anomHi >= 8));
     if (heat.length) {
       const pk = heat.reduce((p, c) => c.hi > p.hi ? c : p), sev = pk.overRec || pk.hi >= 37 ? 'severe' : pk.hi >= 35 ? 'high' : 'moderate';
       const extra = pk.overRec ? tr('al_heat_break', { rec: tempDeg(rec.hi.v) }) : pk.nearRec ? tr('al_heat_near', { rec: tempDeg(rec.hi.v) }) : pk.pctHi >= 97 ? tr('al_heat_pct', { pct: Math.round(pk.pctHi) }) : '';
-      A.push({ type: 'heat', sev, title: heat.length > 1 ? tr('al_heatwave') : tr('al_extremeheat'), when: rangeStr(heat), desc: tr('al_heat_desc', { t: tempDeg(pk.hi), day: fmtDay(pk.date), anom: pm(pk.anomHi), norm: tempDeg(pk.nHi), extra }), ic: icon(0, true, false) });
+      A.push({ type: 'heat', sev, title: heat.length > 1 ? tr('al_heatwave') : tr('al_extremeheat'), when: rangeStr(heat, pk), desc: tr('al_heat_desc', { t: tempDeg(pk.hi), day: fmtDay(pk.date), anom: pm(pk.anomHi), norm: tempDeg(pk.nHi), extra }), ic: icon(0, true, false) });
     }
-    const storm = an.filter(a => a.code >= 95 || (cape[a.date] || 0) >= 1500);
+    const storm = an.filter(a => a.code >= 95 || (sb[a.date] && stormLevel(sb[a.date].cape, sb[a.date].cin, sb[a.date].shear, a.code)));
     if (storm.length) {
-      const pk = storm.reduce((p, c) => (cape[c.date] || 0) > (cape[p.date] || 0) ? c : p), cp = Math.round(cape[pk.date] || 0), sev = pk.code >= 96 || cp >= 2500 ? 'severe' : cp >= 2000 ? 'high' : 'moderate';
-      const extra = cp ? tr('al_storm_cape', { cape: cp, fuel: cp >= 2000 ? tr('al_storm_fuel') : '' }) : '';
-      A.push({ type: 'storm', sev, title: tr('al_storms'), when: rangeStr(storm), desc: tr('al_storm_desc', { day: fmtDay(pk.date), extra }), ic: icon(95, true, false) });
+      const pk = storm.reduce((p, c) => { const cc = (sb[c.date] && sb[c.date].cape) || 0, cpv = (sb[p.date] && sb[p.date].cape) || 0; return cc !== cpv ? (cc > cpv ? c : p) : ((c.code || 0) > (p.code || 0) ? c : p); });
+      const s = sb[pk.date] || { cape: 0, cin: 0, shear: 0 }, cp = Math.round(s.cape), sev = stormLevel(s.cape, s.cin, s.shear, pk.code) || 'moderate';
+      let extra = '';
+      if (cp >= 300) { const cap = s.cin > 200 ? tr('al_storm_cap_strong') : s.cin > 75 ? tr('al_storm_cap_mod') : tr('al_storm_cap_weak'); const shear = s.shear >= 15 ? tr('al_storm_shear', { s: Math.round(s.shear), org: s.shear >= 18 && s.cape >= 1500 }) : ''; extra = tr('al_storm_cape', { cape: cp, cap, shear, fuel: cp >= 2000 ? tr('al_storm_fuel') : '' }); }
+      A.push({ type: 'storm', sev, title: tr('al_storms'), when: rangeStr(storm, pk), desc: tr('al_storm_desc', { day: fmtDay(pk.date), extra }), ic: icon(95, true, false) });
     }
     const wet = an.filter(a => a.rain >= 25);
     if (wet.length) {
       const pk = wet.reduce((p, c) => c.rain > p.rain ? c : p), near = pk.rain >= rec.rain.v * 0.6 ? tr('al_rain_near', { rec: fmtP(rec.rain.v) }) : '';
-      A.push({ type: 'rain', sev: pk.rain >= 40 ? 'severe' : 'high', title: tr('al_rain'), when: rangeStr(wet), desc: tr('al_rain_desc', { mm: fmtP(pk.rain), day: fmtDay(pk.date), extra: near }), ic: icon(63, true, false) });
+      A.push({ type: 'rain', sev: pk.rain >= 40 ? 'severe' : 'high', title: tr('al_rain'), when: rangeStr(wet, pk), desc: tr('al_rain_desc', { mm: fmtP(pk.rain), day: fmtDay(pk.date), extra: near }), ic: icon(63, true, false) });
     }
     const windy = an.filter(a => a.gust >= 75);
-    if (windy.length) { const pk = windy.reduce((p, c) => c.gust > p.gust ? c : p); A.push({ type: 'wind', sev: pk.gust >= 95 ? 'severe' : 'high', title: tr('al_wind'), when: rangeStr(windy), desc: tr('al_wind_desc', { g: fmtW(pk.gust), day: fmtDay(pk.date) }), ic: icon(3, true, false) }); }
+    if (windy.length) { const pk = windy.reduce((p, c) => c.gust > p.gust ? c : p); A.push({ type: 'wind', sev: pk.gust >= 95 ? 'severe' : 'high', title: tr('al_wind'), when: rangeStr(windy, pk), desc: tr('al_wind_desc', { g: fmtW(pk.gust), day: fmtDay(pk.date) }), ic: icon(3, true, false) }); }
     const cold = an.filter(a => a.lo <= -8 || a.anomLo <= -9);
-    if (cold.length) { const pk = cold.reduce((p, c) => c.lo < p.lo ? c : p); A.push({ type: 'cold', sev: pk.lo <= -12 ? 'high' : 'moderate', title: tr('al_frost'), when: rangeStr(cold), desc: tr('al_cold_desc', { t: tempDeg(pk.lo), day: fmtDay(pk.date), anom: pm(pk.anomLo) }), ic: icon(71, true, false) }); }
+    if (cold.length) { const pk = cold.reduce((p, c) => c.lo < p.lo ? c : p); A.push({ type: 'cold', sev: pk.lo <= -12 ? 'high' : 'moderate', title: tr('al_frost'), when: rangeStr(cold, pk), desc: tr('al_cold_desc', { t: tempDeg(pk.lo), day: fmtDay(pk.date), anom: pm(pk.anomLo) }), ic: icon(71, true, false) }); }
     const snow = an.filter(a => a.snow >= 5);
-    if (snow.length) { const pk = snow.reduce((p, c) => c.snow > p.snow ? c : p); A.push({ type: 'snow', sev: pk.snow >= 15 ? 'high' : 'moderate', title: tr('al_snow'), when: rangeStr(snow), desc: tr('al_snow_desc', { cm: round(pk.snow, 1), day: fmtDay(pk.date) }), ic: icon(75, true, false) }); }
+    if (snow.length) { const pk = snow.reduce((p, c) => c.snow > p.snow ? c : p); A.push({ type: 'snow', sev: pk.snow >= 15 ? 'high' : 'moderate', title: tr('al_snow'), when: rangeStr(snow, pk), desc: tr('al_snow_desc', { cm: round(pk.snow, 1), day: fmtDay(pk.date) }), ic: icon(75, true, false) }); }
     const order = { severe: 0, high: 1, moderate: 2 };
     return A.sort((a, b) => order[a.sev] - order[b.sev]);
   }
@@ -278,14 +296,14 @@
   }
 
   function badge(svg, title) { return `<span class="bg-ic" title="${title}">${svg}</span>`; }
-  function renderDaily(an, cape) {
+  function renderDaily(an, sb) {
     const days = an.slice(0, 14); if (!days.length) { $('#daily').innerHTML = ''; return; }
     const lo = Math.floor(Math.min(...days.map(d => d.lo))), hi = Math.ceil(Math.max(...days.map(d => d.hi))), span = Math.max(1, hi - lo);
     let html = '';
     days.forEach(d => {
       const left = (d.lo - lo) / span * 100, w = (d.hi - d.lo) / span * 100; let b = '';
       if (d.hi >= 32) b += badge(flame(d.hi >= 36 ? '#e23b3b' : '#ff7a45'), d.hi >= 36 ? tr('severe_heat') : tr('hot_day'));
-      if (d.code >= 95 || (cape[d.date] || 0) >= 1500) b += badge(bolt(), tr('tstorm_risk'));
+      if (d.code >= 95 || (sb[d.date] && stormLevel(sb[d.date].cape, sb[d.date].cin, sb[d.date].shear, d.code))) b += badge(bolt(), tr('tstorm_risk'));
       if (d.gust >= 60) b += badge(wind(), tr('strong_gusts', { g: fmtW(d.gust) }));
       const pop = d.prob >= 20 ? `<div class="d-pop">${rainGlyph()} ${d.prob}%</div>` : '';
       html += `<div class="dwrap"><div class="drow" data-i="${d.i}" role="button" tabindex="0" aria-expanded="false">
@@ -610,11 +628,12 @@
     try {
       if (full) showLoading(true);
       const fc = await getForecast(state.loc); state.forecast = fc;
-      state.capeByDay = {}; const h = fc.hourly;
-      for (let i = 0; i < h.time.length; i++) { const d = h.time[i].slice(0, 10), c = h.cape ? h.cape[i] : null; if (c != null && (!(d in state.capeByDay) || c > state.capeByDay[d])) state.capeByDay[d] = c; }
+      state.stormByDay = {}; const h = fc.hourly; const peakIdx = {};
+      for (let i = 0; i < h.time.length; i++) { const d = h.time[i].slice(0, 10), c = h.cape ? h.cape[i] : null; if (c == null) continue; if (!(d in peakIdx) || c > h.cape[peakIdx[d]]) peakIdx[d] = i; }
+      for (const d in peakIdx) { const i = peakIdx[d]; state.stormByDay[d] = { cape: h.cape[i] || 0, cin: h.convective_inhibition ? (h.convective_inhibition[i] || 0) : 0, shear: bulkShear(h.wind_speed_10m && h.wind_speed_10m[i], h.wind_direction_10m && h.wind_direction_10m[i], h.wind_speed_500hPa && h.wind_speed_500hPa[i], h.wind_direction_500hPa && h.wind_direction_500hPa[i]) }; }
       if (!state.clim) { try { state.clim = buildClim(await getArchive(state.loc)); } catch (e) { console.warn('archive failed', e); state.clim = null; } }
       state.analysis = analyze(fc, state.clim || FALLBACK_CLIM);
-      const cape = {}; state.analysis.forEach(a => cape[a.date] = state.capeByDay[a.date] || 0); state.capeByDate = cape;
+      const sb = {}; state.analysis.forEach(a => sb[a.date] = state.stormByDay[a.date] || { cape: 0, cin: 0, shear: 0 }); state.stormByDate = sb;
       const [air, nc] = await Promise.all([getAir(state.loc).catch(() => null), getNowcast(state.loc).catch(() => null)]);
       state.air = air; state.nowcast = nc;
 
@@ -623,10 +642,10 @@
       renderNowcast(state.nowcast);
       renderHourly(fc); renderHourlyChart();
       renderAir(state.air);
-      renderDaily(state.analysis, cape);
+      renderDaily(state.analysis, sb);
       if (state.clim) renderHistory(fc, state.analysis, state.clim); else $('#history').innerHTML = '<div class="chart-card">Historical data unavailable for this location.</div>';
       ensureStripes();
-      state.alerts = buildAlerts(state.analysis, state.clim || FALLBACK_CLIM, cape);
+      state.alerts = buildAlerts(state.analysis, state.clim || FALLBACK_CLIM, sb);
       renderAlerts(state.alerts);
       renderFaves();
       maybeNotify();
@@ -638,7 +657,7 @@
     }
   }
   function setLocation(loc) { state.loc = loc; localStorage.setItem(LS.loc, JSON.stringify(loc)); state.clim = null; closeSearch(); $('#searchInput').value = ''; load(true); if (state.map.inited && state.map.scope === 'near') scanArea(); }
-  function reRender() { if (!state.forecast) return; renderHero(state.forecast, state.analysis); renderDetails(state.forecast, state.analysis); renderNowcast(state.nowcast); renderHourly(state.forecast); renderHourlyChart(); renderAir(state.air); renderDaily(state.analysis, state.capeByDate); if (state.clim) renderHistory(state.forecast, state.analysis, state.clim); if (state.longData) { renderStripes(state.longData); const o = $('#onthisday'); if (o) o.textContent = onThisDay(); } state.alerts = buildAlerts(state.analysis, state.clim || FALLBACK_CLIM, state.capeByDate); renderAlerts(state.alerts); }
+  function reRender() { if (!state.forecast) return; renderHero(state.forecast, state.analysis); renderDetails(state.forecast, state.analysis); renderNowcast(state.nowcast); renderHourly(state.forecast); renderHourlyChart(); renderAir(state.air); renderDaily(state.analysis, state.stormByDate); if (state.clim) renderHistory(state.forecast, state.analysis, state.clim); if (state.longData) { renderStripes(state.longData); const o = $('#onthisday'); if (o) o.textContent = onThisDay(); } state.alerts = buildAlerts(state.analysis, state.clim || FALLBACK_CLIM, state.stormByDate); renderAlerts(state.alerts); }
 
   /* ---------------- events ---------------- */
   let searchT = null, results = [];

@@ -146,7 +146,8 @@ html[data-theme="light"] .alert.sev-ok{background:rgba(60,180,120,.15);border-co
 .drow .d-day{display:flex;flex-direction:column;line-height:1.15}
 .d-wd{font-weight:600;font-size:15px}
 .d-dt{font-size:12px;color:var(--faint)}
-.drow .d-ic{width:32px;height:32px}
+.drow .d-ic{display:flex;flex-direction:column;align-items:center;justify-content:center}
+.drow .d-ic > svg{width:32px;height:32px;flex:none}
 .d-temp{display:flex;align-items:center;gap:11px}
 .d-lo{width:30px;text-align:right;color:var(--muted);font-size:14px}
 .d-hi{width:30px;font-weight:600;font-size:15px}
