@@ -25,7 +25,7 @@
     alerts: [], hourlyMetric: 'temp', faves: loadFaves(), timer: null,
     map: { inited: false, leaflet: null, baseLayer: null, radarLayer: null, markers: [], center: null, circle: null, scope: 'near', radius: 50, country: 'DE', radarOn: false, frames: [], radarHost: '', radarIdx: 0, radarTimer: null }
   };
-  window.__aurora = state;
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.protocol === 'file:') window.__aurora = state;
 
   /* ---------------- helpers ---------------- */
   function loadLoc() { try { return JSON.parse(localStorage.getItem(LS.loc)) || DEFAULT_LOC; } catch (e) { return DEFAULT_LOC; } }
@@ -53,8 +53,9 @@
   function compass(deg) { const en = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'], de = ['N', 'NNO', 'NO', 'ONO', 'O', 'OSO', 'SO', 'SSO', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']; return (state.lang === 'de' ? de : en)[Math.round(deg / 22.5) % 16]; }
   function tColor(t) { if (t >= 36) return '#e23b3b'; if (t >= 33) return '#ff7a45'; if (t >= 30) return '#ff9f3e'; if (t >= 26) return '#ffc24a'; if (t >= 22) return '#7bd88f'; if (t >= 17) return '#3fc1c9'; if (t >= 10) return '#56a0e8'; if (t >= 2) return '#5a82d8'; return '#7d6bdc'; }
   function uvWord(u) { return u == null ? '–' : u < 3 ? tr('uv_low') : u < 6 ? tr('uv_mod') : u < 8 ? tr('uv_high') : u < 11 ? tr('uv_vhigh') : tr('uv_extreme'); }
-  function hhmm(iso) { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+  function hhmm(iso) { return new Date(iso).toLocaleTimeString(LOCALE(), { hour: '2-digit', minute: '2-digit' }); }
   function esc(s) { return (s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+  function safeHttpUrl(u) { try { const p = new URL(u); return (p.protocol === 'https:' || p.protocol === 'http:') ? u : ''; } catch (e) { return ''; } }
   function keyLoc() { return '.' + state.loc.lat.toFixed(2) + ',' + state.loc.lon.toFixed(2); }
 
   /* ---------------- favorites ---------------- */
@@ -230,7 +231,7 @@
     $('#hero').innerHTML =
       `<div class="hero-loc"><span class="dot"></span><span class="hloc-name">${esc(place)}</span><button class="fave-star ${isFave(state.loc) ? 'on' : ''}" id="faveStar" title="Bookmark this place" aria-label="Bookmark this place">${starSvg()}</button></div>
        <div class="hero-main"><div class="hero-ic float">${icon(c.weather_code, c.is_day === 1, true)}</div><div class="hero-temp">${fmtT(c.temperature_2m)}</div>
-       <div class="hero-right"><div class="hero-cond">${wmoText(c.weather_code)}</div><div class="hero-feels">${tr('feels_like')} ${fmtT(c.apparent_temperature)}</div>
+       <div class="hero-right"><div class="hero-cond">${esc(wmoText(c.weather_code))}</div><div class="hero-feels">${tr('feels_like')} ${fmtT(c.apparent_temperature)}</div>
        <div class="hero-hl"><span>${tr('hilo_high')} <b>${fmtT(today && today.hi)}</b></span><span>${tr('hilo_low')} <b>${fmtT(today && today.lo)}</b></span></div></div></div>
        <div class="hero-narr">${esc(narr)}</div>`;
   }
@@ -278,7 +279,8 @@
 
   function badge(svg, title) { return `<span class="bg-ic" title="${title}">${svg}</span>`; }
   function renderDaily(an, cape) {
-    const days = an.slice(0, 14), lo = Math.floor(Math.min(...days.map(d => d.lo))), hi = Math.ceil(Math.max(...days.map(d => d.hi))), span = Math.max(1, hi - lo);
+    const days = an.slice(0, 14); if (!days.length) { $('#daily').innerHTML = ''; return; }
+    const lo = Math.floor(Math.min(...days.map(d => d.lo))), hi = Math.ceil(Math.max(...days.map(d => d.hi))), span = Math.max(1, hi - lo);
     let html = '';
     days.forEach(d => {
       const left = (d.lo - lo) / span * 100, w = (d.hi - d.lo) / span * 100; let b = '';
@@ -338,7 +340,7 @@
 
   /* ---------------- history ---------------- */
   function renderHistory(fc, an, clim) {
-    const next7 = an.slice(0, 7), avgHi = mean(next7.map(d => d.hi)), avgNorm = mean(next7.map(d => d.nHi)), anom = avgHi - avgNorm;
+    const next7 = an.slice(0, 7), avgHi = mean(next7.map(d => d.hi)), avgNorm = mean(next7.map(d => d.nHi)), anom = (avgHi != null && avgNorm != null) ? avgHi - avgNorm : 0;
     const peak = an.slice(0, 14).reduce((p, c) => c.hi > p.hi ? c : p), rain7 = sum(next7.map(d => d.rain)), normRain7 = mean(clim.monthly.map(m => m.pr)) / 30 * 7;
     let cards = '';
     cards += insightCard(anom >= 0 ? 'accent-hot' : 'accent-cool', sunSmall(), tr('ins_week'), pm(anom, 1) + '°', tr('ins_week_desc', { dir: anom >= 0 ? tr('dir_above') : tr('dir_below'), norm: tempDeg(avgNorm) }));
@@ -406,7 +408,7 @@
     const maxP = Math.max(0.5, ...win.map(w => w.p));
     const bars = win.map(w => { const h = Math.max(4, Math.round(w.p / maxP * 100)), col = w.p < thr ? 'rgba(128,144,170,.28)' : w.p < 0.5 ? '#7fc4ee' : w.p < 2 ? '#2f9be0' : '#1f5fa8'; return `<div class="nc-bar"><div class="nc-fill" style="height:${h}%;background:${col}" title="${hhmm(w.t)} · ${fmtP(w.p)}"></div></div>`; }).join('');
     el.style.display = '';
-    el.innerHTML = `<div class="nc-head">${raining ? rainGlyphBig() : sunSmall()}<span class="nc-msg">${esc(msg)}</span></div><div class="nc-bars">${bars}</div><div class="nc-ticks"><span>now</span><span>+1 h</span><span>+2 h</span></div>`;
+    el.innerHTML = `<div class="nc-head">${raining ? rainGlyphBig() : sunSmall()}<span class="nc-msg">${esc(msg)}</span></div><div class="nc-bars">${bars}</div><div class="nc-ticks"><span>${tr('now')}</span><span>${tr('nc_plus1')}</span><span>${tr('nc_plus2')}</span></div>`;
   }
 
   /* ---------------- warming stripes + climate history ---------------- */
@@ -421,8 +423,8 @@
   function stripeColor(t) { const st = [[33, 102, 172], [247, 247, 247], [178, 24, 43]], seg = t < 0.5 ? 0 : 1, lt = t < 0.5 ? t / 0.5 : (t - 0.5) / 0.5, a = st[seg], b = st[seg + 1]; return 'rgb(' + Math.round(a[0] + (b[0] - a[0]) * lt) + ',' + Math.round(a[1] + (b[1] - a[1]) * lt) + ',' + Math.round(a[2] + (b[2] - a[2]) * lt) + ')'; }
   function renderStripes(data) {
     const el = $('#stripes'); if (!el || !data || !data.daily) return;
-    const t = data.daily.time, mean = data.daily.temperature_2m_mean, byYear = {};
-    for (let i = 0; i < t.length; i++) { if (mean[i] == null) continue; const y = t[i].slice(0, 4); (byYear[y] = byYear[y] || []).push(mean[i]); }
+    const t = data.daily.time, dmean = data.daily.temperature_2m_mean, byYear = {};
+    for (let i = 0; i < t.length; i++) { if (dmean[i] == null) continue; const y = t[i].slice(0, 4); (byYear[y] = byYear[y] || []).push(dmean[i]); }
     const ann = Object.keys(byYear).sort().map(y => ({ y: +y, m: byYear[y].reduce((s, x) => s + x, 0) / byYear[y].length, n: byYear[y].length })).filter(a => a.n >= 350);
     if (ann.length < 5) { el.innerHTML = ''; return; }
     const lo = Math.min(...ann.map(a => a.m)), hi = Math.max(...ann.map(a => a.m));
@@ -449,7 +451,7 @@
 
   function renderAlerts(alerts) {
     if (!alerts.length) { $('#alerts').innerHTML = `<div class="alert sev-ok"><div class="a-ic"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 13l4 4 10-10" fill="none" stroke="#7bd88f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="a-body"><div class="a-top"><span class="a-title">${tr('no_extremes')}</span></div><div class="a-desc">${tr('no_extremes_desc')}</div></div></div>`; return; }
-    $('#alerts').innerHTML = alerts.map(a => `<div class="alert sev-${a.sev}"><div class="a-ic">${a.ic}</div><div class="a-body"><div class="a-top"><span class="a-title">${esc(a.title)}</span><span class="pill">${tr('sev_' + a.sev)}</span><span class="a-when">${a.when}</span></div><div class="a-desc">${esc(a.desc)}</div></div></div>`).join('');
+    $('#alerts').innerHTML = alerts.map(a => `<div class="alert sev-${a.sev}"><div class="a-ic">${a.ic}</div><div class="a-body"><div class="a-top"><span class="a-title">${esc(a.title)}</span><span class="pill">${tr('sev_' + a.sev)}</span><span class="a-when">${esc(a.when)}</span></div><div class="a-desc">${esc(a.desc)}</div></div></div>`).join('');
   }
 
   /* ---------------- notifications ---------------- */
@@ -481,6 +483,7 @@
   function countryName(c) { return state.lang === 'de' ? c.de : c.en; }
   const MAPCOLORS = { heat: '#ff6a3d', storm: '#9b7bf2', wind: '#8b97ab', rain: '#2f9be0', snow: '#84c4ff' };
   const MAPORDER = ['heat', 'storm', 'wind', 'rain', 'snow'];
+  const FALLBACK_CLIM = { mx: null, mn: null, pr: null, D: [], rec: { hi: { v: 99 }, lo: { v: -99 }, rain: { v: 99 } }, monthly: Array.from({ length: 12 }, (_, m) => ({ month: m, pr: 0 })), years: 0 };
 
   function distBearing(la1, lo1, la2, lo2) {
     const R = 6371, toR = x => x * Math.PI / 180, dLat = toR(la2 - la1), dLon = toR(lo2 - lo1);
@@ -518,7 +521,7 @@
   async function fetchScan(points) {
     const chunks = []; for (let i = 0; i < points.length; i += 100) chunks.push(points.slice(i, i + 100));
     const all = [];
-    await Promise.all(chunks.map(async ch => {
+    await Promise.allSettled(chunks.map(async ch => {
       const lats = ch.map(p => p[0].toFixed(4)).join(','), lons = ch.map(p => p[1].toFixed(4)).join(',');
       const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lats + '&longitude=' + lons + '&current=weather_code,temperature_2m,wind_gusts_10m,precipitation&daily=weather_code,temperature_2m_max,wind_gusts_10m_max,precipitation_sum,snowfall_sum&forecast_days=2&timezone=auto&wind_speed_unit=kmh';
       const r = await fetch(url); if (!r.ok) throw new Error('scan ' + r.status);
@@ -560,7 +563,7 @@
       setMapStatus(events.length ? tr('map_found', { n: events.length, area }) : tr('map_clear', { area }));
     } catch (e) { console.warn('scan failed', e); setMapStatus(tr('map_failed')); }
   }
-  async function loadRadar() { if (state.map.frames.length) return true; try { const r = await fetch('https://api.rainviewer.com/public/weather-maps.json'), d = await r.json(); state.map.radarHost = d.host; state.map.frames = [...(d.radar && d.radar.past || []), ...(d.radar && d.radar.nowcast || [])]; return state.map.frames.length > 0; } catch (e) { return false; } }
+  async function loadRadar() { if (state.map.frames.length && state.map.radarTs && Date.now() - state.map.radarTs < 6e5) return true; try { const r = await fetch('https://api.rainviewer.com/public/weather-maps.json'), d = await r.json(); state.map.radarHost = d.host; state.map.frames = [...(d.radar && d.radar.past || []), ...(d.radar && d.radar.nowcast || [])]; state.map.radarTs = Date.now(); return state.map.frames.length > 0; } catch (e) { return false; } }
   function showFrame(i) { const f = state.map.frames[i]; if (!f) return; if (state.map.radarLayer) state.map.leaflet.removeLayer(state.map.radarLayer); state.map.radarLayer = L.tileLayer(state.map.radarHost + f.path + '/256/{z}/{x}/{y}/2/1_1.png', { opacity: .65, zIndex: 400, maxNativeZoom: 8, maxZoom: 18 }).addTo(state.map.leaflet); state.map.radarIdx = i; const el = $('#radarTime'); if (el) el.textContent = 'Radar ' + new Date(f.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
   async function toggleRadar() {
     if (!state.map.inited) initMap();
@@ -576,7 +579,7 @@
   function startClock() {
     const el = $('#clock'); if (!el) return;
     const upd = () => { const n = new Date(); el.textContent = n.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) + ' · ' + n.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }); };
-    upd(); setInterval(upd, 1000);
+    upd(); if (state.clockTimer) clearInterval(state.clockTimer); state.clockTimer = setInterval(upd, 1000);
   }
   async function loadFact() {
     const el = $('#factText'), banner = $('#factBanner'); if (!el) return;
@@ -593,8 +596,9 @@
     }
     if (!fact) { if (banner) banner.style.display = 'none'; return; }
     if (banner) banner.style.display = '';
-    const link = fact.url ? ' <a href="' + fact.url + '" target="_blank" rel="noopener" class="fact-more">' + tr('fact_more') + '</a>' : '';
-    el.innerHTML = '<b>' + tr('fact_pre', { year: fact.year }) + '</b>' + esc(fact.text.replace(/\s*\(pictured\)/gi, '')) + link;
+    const safeUrl = safeHttpUrl(fact.url);
+    const link = safeUrl ? ' <a href="' + esc(safeUrl) + '" target="_blank" rel="noopener noreferrer" class="fact-more">' + tr('fact_more') + '</a>' : '';
+    el.innerHTML = '<b>' + tr('fact_pre', { year: esc(String(fact.year)) }) + '</b>' + esc(fact.text.replace(/\s*\(pictured\)/gi, '')) + link;
   }
 
   /* ---------------- orchestration ---------------- */
@@ -609,8 +613,7 @@
       state.capeByDay = {}; const h = fc.hourly;
       for (let i = 0; i < h.time.length; i++) { const d = h.time[i].slice(0, 10), c = h.cape ? h.cape[i] : null; if (c != null && (!(d in state.capeByDay) || c > state.capeByDay[d])) state.capeByDay[d] = c; }
       if (!state.clim) { try { state.clim = buildClim(await getArchive(state.loc)); } catch (e) { console.warn('archive failed', e); state.clim = null; } }
-      const fallback = { mx: null, mn: null, pr: null, D: [], rec: { hi: { v: 99 }, lo: { v: -99 }, rain: { v: 99 } }, monthly: Array.from({ length: 12 }, (_, m) => ({ month: m, pr: 0 })), years: 0 };
-      state.analysis = analyze(fc, state.clim || fallback);
+      state.analysis = analyze(fc, state.clim || FALLBACK_CLIM);
       const cape = {}; state.analysis.forEach(a => cape[a.date] = state.capeByDay[a.date] || 0); state.capeByDate = cape;
       const [air, nc] = await Promise.all([getAir(state.loc).catch(() => null), getNowcast(state.loc).catch(() => null)]);
       state.air = air; state.nowcast = nc;
@@ -623,7 +626,7 @@
       renderDaily(state.analysis, cape);
       if (state.clim) renderHistory(fc, state.analysis, state.clim); else $('#history').innerHTML = '<div class="chart-card">Historical data unavailable for this location.</div>';
       ensureStripes();
-      state.alerts = buildAlerts(state.analysis, state.clim || fallback, cape);
+      state.alerts = buildAlerts(state.analysis, state.clim || FALLBACK_CLIM, cape);
       renderAlerts(state.alerts);
       renderFaves();
       maybeNotify();
@@ -635,7 +638,7 @@
     }
   }
   function setLocation(loc) { state.loc = loc; localStorage.setItem(LS.loc, JSON.stringify(loc)); state.clim = null; closeSearch(); $('#searchInput').value = ''; load(true); if (state.map.inited && state.map.scope === 'near') scanArea(); }
-  function reRender() { if (!state.forecast) return; renderHero(state.forecast, state.analysis); renderDetails(state.forecast, state.analysis); renderNowcast(state.nowcast); renderHourly(state.forecast); renderHourlyChart(); renderAir(state.air); renderDaily(state.analysis, state.capeByDate); if (state.clim) renderHistory(state.forecast, state.analysis, state.clim); if (state.longData) { renderStripes(state.longData); const o = $('#onthisday'); if (o) o.textContent = onThisDay(); } state.alerts = buildAlerts(state.analysis, state.clim || { rec: { hi: { v: 99 }, lo: { v: -99 }, rain: { v: 99 } } }, state.capeByDate); renderAlerts(state.alerts); }
+  function reRender() { if (!state.forecast) return; renderHero(state.forecast, state.analysis); renderDetails(state.forecast, state.analysis); renderNowcast(state.nowcast); renderHourly(state.forecast); renderHourlyChart(); renderAir(state.air); renderDaily(state.analysis, state.capeByDate); if (state.clim) renderHistory(state.forecast, state.analysis, state.clim); if (state.longData) { renderStripes(state.longData); const o = $('#onthisday'); if (o) o.textContent = onThisDay(); } state.alerts = buildAlerts(state.analysis, state.clim || FALLBACK_CLIM, state.capeByDate); renderAlerts(state.alerts); }
 
   /* ---------------- events ---------------- */
   let searchT = null, results = [];
@@ -683,11 +686,11 @@
   $('#refreshBtn').addEventListener('click', () => { toast(tr('t_refreshing')); load(false); });
   $('#langBtn').addEventListener('click', () => { state.lang = state.lang === 'de' ? 'en' : 'de'; localStorage.setItem('aurora.lang', state.lang); applyStaticI18n(); reRender(); loadFact(); setBell(); setUpdated(); if (state.map.inited) scanArea(); });
   $('#bellBtn').addEventListener('click', async () => {
-    if (!('Notification' in window)) { toast('Notifications not supported here'); return; }
-    if (Notification.permission === 'denied') { toast('Alerts are blocked in your browser settings'); return; }
-    if (Notification.permission === 'granted') { toast('Extreme-weather alerts are on'); localStorage.removeItem('aurora.notified' + keyLoc()); maybeNotify(); setBell(); return; }
+    if (!('Notification' in window)) { toast(tr('t_notifns')); return; }
+    if (Notification.permission === 'denied') { toast(tr('t_notifblk')); return; }
+    if (Notification.permission === 'granted') { toast(tr('t_alertson')); localStorage.removeItem('aurora.notified' + keyLoc()); maybeNotify(); setBell(); return; }
     const p = await Notification.requestPermission(); setBell();
-    if (p === 'granted') { toast('Extreme-weather alerts enabled'); localStorage.removeItem('aurora.notified' + keyLoc()); maybeNotify(); } else toast('Notification permission not granted');
+    if (p === 'granted') { toast(tr('t_alertsen')); localStorage.removeItem('aurora.notified' + keyLoc()); maybeNotify(); } else toast(tr('t_notifno'));
   });
 
   /* ---------------- init ---------------- */
