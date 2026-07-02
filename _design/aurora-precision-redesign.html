@@ -1,0 +1,776 @@
+<title>Aurora — Precision Dashboard redesign spec</title>
+<style>
+:root{
+  --ink:#090F1A;            /* page ground, observatory night */
+  --panel:#0F1726;          /* console panel */
+  --panel-2:#131D30;        /* raised sub-panel */
+  --panel-3:#182338;        /* hover / input */
+  --line:rgba(150,172,210,.14);
+  --line-2:rgba(150,172,210,.24);
+  --text:#EAF0FA;
+  --muted:#A6B2C8;
+  --faint:#6E7C96;
+  --cy:#5EC8E8;             /* aurora cyan  — primary accent */
+  --vi:#8B7BF2;             /* aurora violet — secondary accent */
+  --heat:#FF7A45; --storm:#A98BFF; --rain:#56B6F0; --wind:#9FB0C4; --snow:#CFE8FF; --frost:#6AA8FF;
+  --good:#3FC1A3; --warn:#FFC24A; --sev:#E24B4A;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code","Roboto Mono",Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --railw:264px;
+  --maxw:1160px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0}
+.doc{
+  font-family:var(--sans);
+  color:var(--text);
+  background:
+    radial-gradient(120% 90% at 84% -8%, rgba(139,123,242,.14), transparent 46%),
+    radial-gradient(90% 70% at 8% -4%, rgba(94,200,232,.12), transparent 42%),
+    linear-gradient(178deg,#0C1424,#090F1A 60%,#070B14);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+  line-height:1.62;
+  font-size:15.5px;
+}
+.wrap{max-width:var(--maxw);margin:0 auto;display:grid;grid-template-columns:var(--railw) minmax(0,1fr);gap:0;align-items:start}
+
+/* ---------- contents rail ---------- */
+.rail{position:sticky;top:0;height:100vh;overflow-y:auto;padding:30px 20px 40px;border-right:1px solid var(--line);scrollbar-width:thin}
+.rail::-webkit-scrollbar{width:7px}.rail::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:4px}
+.railbrand{display:flex;align-items:center;gap:11px;margin-bottom:6px}
+.railmark{width:34px;height:34px;flex:none}
+.railbrand h1{font-size:17px;letter-spacing:-.02em;margin:0;font-weight:650}
+.railbrand .rb-sub{font:500 10.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--cy);margin-top:3px}
+.railmeta{font:500 10.5px/1.5 var(--mono);letter-spacing:.05em;color:var(--faint);text-transform:uppercase;margin:14px 0 20px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.toc{list-style:none;margin:0;padding:0;counter-reset:sec}
+.toc li{margin:0}
+.toc a{counter-increment:sec;display:grid;grid-template-columns:26px 1fr;gap:8px;align-items:baseline;padding:6px 8px;border-radius:7px;text-decoration:none;color:var(--muted);font-size:13px;transition:background .14s,color .14s}
+.toc a::before{content:counter(sec,decimal-leading-zero);font:500 10.5px/1 var(--mono);color:var(--faint);letter-spacing:.04em}
+.toc a:hover{background:var(--panel-2);color:var(--text)}
+.toc a.wow::after{content:"◆";color:var(--vi);font-size:9px;margin-left:5px}
+
+/* ---------- body ---------- */
+.body{padding:30px 40px 90px;min-width:0}
+.masthead{padding:6px 0 30px;border-bottom:1px solid var(--line);margin-bottom:38px}
+.eyebrow{font:600 11px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--cy);margin-bottom:16px}
+.masthead h2{font-size:38px;line-height:1.08;letter-spacing:-.028em;margin:0 0 14px;font-weight:680;text-wrap:balance;max-width:19ch}
+.masthead h2 em{font-style:normal;color:var(--cy)}
+.lede{font-size:16.5px;color:var(--muted);max-width:64ch;line-height:1.6}
+.lede b{color:var(--text);font-weight:600}
+.mast-stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}
+.mstat{font:500 11px/1 var(--mono);letter-spacing:.03em;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:7px 13px}
+.mstat b{color:var(--cy);font-weight:600}
+
+/* section shell */
+section{margin:0 0 30px;scroll-margin-top:22px}
+.shead{display:flex;align-items:baseline;gap:14px;margin:0 0 16px;padding-top:14px}
+.snum{font:600 12px/1 var(--mono);color:var(--vi);letter-spacing:.05em;flex:none;padding-top:3px}
+.shead h3{font-size:23px;letter-spacing:-.02em;margin:0;font-weight:640}
+.shead .stag{margin-left:auto;font:600 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:5px 8px;flex:none}
+.stag.wowtag{color:var(--vi);border-color:rgba(139,123,242,.4);background:rgba(139,123,242,.08)}
+.sintro{color:var(--muted);max-width:70ch;margin:0 0 18px}
+.sintro b{color:var(--text);font-weight:600}
+
+/* console panel — the doc demonstrates the system it specs */
+.panel{background:linear-gradient(180deg,var(--panel),#0C1422);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.panel + .panel{margin-top:14px}
+.p-bar{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.014)}
+.p-bar .dot{width:8px;height:8px;border-radius:50%;background:var(--cy);box-shadow:0 0 0 4px rgba(94,200,232,.14)}
+.p-bar .p-t{font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.p-bar .p-r{margin-left:auto;font:500 10.5px/1 var(--mono);letter-spacing:.06em;color:var(--faint)}
+.p-body{padding:18px 18px}
+.p-body.tight{padding:14px 16px}
+
+/* generic grids */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:900px){.grid2,.grid3{grid-template-columns:1fr}}
+
+/* token swatch rows */
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:10px}
+.sw{border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--panel-2)}
+.sw .chip{height:46px}
+.sw .meta{padding:8px 10px}
+.sw .nm{font-size:12px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px}
+.sw .hex{font:500 11px/1.5 var(--mono);color:var(--muted);letter-spacing:.02em;text-transform:uppercase}
+.sw .use{font-size:11px;color:var(--faint);margin-top:2px;line-height:1.4}
+
+/* spec table */
+.spec{width:100%;border-collapse:collapse;font-size:13.5px}
+.spec th{text-align:left;font:600 10px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--faint);padding:0 12px 9px;border-bottom:1px solid var(--line)}
+.spec td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--muted)}
+.spec tr:last-child td{border-bottom:none}
+.spec td:first-child{color:var(--text);font-weight:600;white-space:nowrap}
+.spec .mono,.spec code{font-family:var(--mono);font-size:12.5px;color:var(--cy);background:rgba(94,200,232,.08);padding:1px 6px;border-radius:5px;letter-spacing:.01em}
+.spec-scroll{overflow-x:auto;scrollbar-width:thin}
+
+/* inline code + kbd */
+code{font-family:var(--mono);font-size:.9em}
+p code,li code,.sintro code{color:var(--cy);background:rgba(94,200,232,.09);padding:1px 6px;border-radius:5px}
+.val{font-family:var(--mono);color:var(--warn)}
+
+/* callout / rules */
+.note{border-left:2px solid var(--cy);background:rgba(94,200,232,.05);border-radius:0 10px 10px 0;padding:12px 16px;margin:14px 0 0;font-size:13.5px;color:var(--muted)}
+.note.keep{border-left-color:var(--good);background:rgba(63,193,163,.06)}
+.note.warnnote{border-left-color:var(--warn);background:rgba(255,194,74,.06)}
+.note b{color:var(--text);font-weight:600}
+.note .lbl{font:600 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--cy);display:block;margin-bottom:5px}
+.note.keep .lbl{color:var(--good)}
+.note.warnnote .lbl{color:var(--warn)}
+
+/* bullet lists */
+ul.clean{list-style:none;margin:12px 0 0;padding:0}
+ul.clean li{position:relative;padding:5px 0 5px 22px;color:var(--muted);font-size:14px;line-height:1.55}
+ul.clean li::before{content:"";position:absolute;left:2px;top:12px;width:6px;height:6px;border-radius:2px;background:var(--cy)}
+ul.clean li b{color:var(--text);font-weight:600}
+ul.clean.vi li::before{background:var(--vi)}
+
+/* before / after */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:760px){.ba{grid-template-columns:1fr}}
+.ba .col{border:1px solid var(--line);border-radius:11px;padding:13px 15px;background:var(--panel-2)}
+.ba .col.now{border-style:dashed;opacity:.9}
+.ba .h{font:600 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;margin-bottom:9px;display:flex;align-items:center;gap:7px}
+.ba .now .h{color:var(--faint)}
+.ba .new .h{color:var(--cy)}
+.ba p{margin:0;font-size:13px;color:var(--muted);line-height:1.55}
+
+/* --- live mock: hero glance strip --- */
+.mock{border:1px solid var(--line);border-radius:14px;background:linear-gradient(165deg,#132a4a,#0e1c34 60%,#0b1526);padding:18px;position:relative;overflow:hidden}
+.mock::after{content:"MOCK";position:absolute;top:9px;right:11px;font:600 9px/1 var(--mono);letter-spacing:.16em;color:var(--faint)}
+.h-top{display:flex;align-items:center;gap:8px;font:500 12px/1 var(--mono);letter-spacing:.04em;color:var(--snow)}
+.h-top .pin{width:6px;height:6px;border-radius:50%;background:var(--good);box-shadow:0 0 0 4px rgba(63,193,163,.2)}
+.h-grid{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;margin-top:12px}
+.h-temp{font-size:78px;font-weight:250;letter-spacing:-.05em;line-height:.86;color:#fff;font-variant-numeric:tabular-nums}
+.h-cond{font-size:16px;font-weight:600;color:#fff}
+.h-feel{font-size:12.5px;color:var(--snow);opacity:.85;margin-top:2px}
+.h-spark{margin-top:10px}
+.glance{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:16px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.gcell{background:#0e1c34;padding:9px 11px}
+.gcell .gl{font:500 9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--snow);opacity:.7}
+.gcell .gv{font-size:17px;font-weight:600;margin-top:5px;color:#fff;font-variant-numeric:tabular-nums}
+.gcell .gv small{font-size:11px;font-weight:500;color:var(--snow);opacity:.8}
+
+/* --- live mock: kp aurora gauge --- */
+.aur{display:grid;grid-template-columns:120px 1fr;gap:18px;align-items:center}
+@media(max-width:620px){.aur{grid-template-columns:1fr}}
+.aur .band{font-size:13px;color:var(--muted)}
+.aur .band b{color:var(--vi);font-weight:600}
+.chipset{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.uchip{font:500 11px/1 var(--mono);letter-spacing:.03em;padding:6px 11px;border-radius:999px;border:1px solid var(--line-2);color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+.uchip.on{border-color:var(--vi);color:#cfc7fb;background:rgba(139,123,242,.12)}
+.uchip .sw{width:8px;height:8px;border-radius:2px}
+
+/* signature callouts */
+.wow{border:1px solid rgba(139,123,242,.34);border-radius:16px;overflow:hidden;background:linear-gradient(180deg,rgba(139,123,242,.09),rgba(94,200,232,.04))}
+.wow .wtop{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid rgba(139,123,242,.22)}
+.wow .wtop .wn{font:700 12px/1 var(--mono);color:var(--vi);letter-spacing:.06em}
+.wow .wtop .wt{font-size:15px;font-weight:640;color:var(--text)}
+.wow .wtop .wtag{margin-left:auto;font:600 9.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--cy)}
+.wow .wbody{padding:15px 18px;color:var(--muted);font-size:14px;line-height:1.58}
+.wow .wbody b{color:var(--text);font-weight:600}
+
+/* type specimen */
+.specimen{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.specrow{display:grid;grid-template-columns:112px 1fr;gap:0;border-bottom:1px solid var(--line);align-items:center}
+.specrow:last-child{border-bottom:none}
+.specrow .lab{font:500 10px/1.4 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);padding:14px 14px;border-right:1px solid var(--line);align-self:stretch;display:flex;align-items:center}
+.specrow .demo{padding:12px 16px}
+.dt-hero{font-size:44px;font-weight:250;letter-spacing:-.04em;line-height:1;color:#fff;font-variant-numeric:tabular-nums}
+.dt-h3{font-size:22px;font-weight:640;letter-spacing:-.02em}
+.dt-body{font-size:15px;color:var(--muted)}
+.dt-data{font:600 20px/1 var(--mono);letter-spacing:-.01em;color:var(--text);font-variant-numeric:tabular-nums}
+.dt-lab{font:600 11px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--cy)}
+
+/* motion demo */
+.motiongrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media(max-width:700px){.motiongrid{grid-template-columns:1fr}}
+.mo{border:1px solid var(--line);border-radius:11px;padding:13px 15px;background:var(--panel-2)}
+.mo .mo-n{font-size:13.5px;font-weight:600;color:var(--text);margin-bottom:3px}
+.mo .mo-d{font-size:12.5px;color:var(--muted);line-height:1.5}
+.mo .mo-e{font:500 11px/1.5 var(--mono);color:var(--cy);margin-top:7px;letter-spacing:.01em}
+
+/* footer */
+.foot{margin-top:20px;padding-top:22px;border-top:1px solid var(--line);color:var(--faint);font-size:12.5px;display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between;align-items:center}
+.foot .mono{font-family:var(--mono);letter-spacing:.03em}
+
+/* responsive: collapse rail */
+@media(max-width:880px){
+  .wrap{grid-template-columns:1fr}
+  .rail{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:22px 22px 18px}
+  .toc{display:grid;grid-template-columns:1fr 1fr;gap:2px}
+  .body{padding:26px 22px 70px}
+  .masthead h2{font-size:29px}
+}
+a{color:var(--cy)}
+a:focus-visible,.toc a:focus-visible{outline:2px solid var(--cy);outline-offset:2px;border-radius:6px}
+</style>
+
+<div class="doc">
+<div class="wrap">
+
+  <!-- ============ CONTENTS RAIL ============ -->
+  <aside class="rail">
+    <div class="railbrand">
+      <svg class="railmark" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <circle cx="20" cy="20" r="19" stroke="rgba(150,172,210,.25)"/>
+        <path d="M6 26c4-1 6-7 10-7s5 5 9 4 5-6 9-6" stroke="#5EC8E8" stroke-width="2" stroke-linecap="round"/>
+        <path d="M6 31c4-1 6-5 10-5s5 4 9 3 5-5 9-5" stroke="#8B7BF2" stroke-width="2" stroke-linecap="round" opacity=".8"/>
+        <circle cx="27" cy="13" r="3.2" fill="#FDB813"/>
+      </svg>
+      <div>
+        <h1>Aurora</h1>
+        <div class="rb-sub">Precision Console</div>
+      </div>
+    </div>
+    <div class="railmeta">Redesign spec · v1<br>self-contained · static · no build</div>
+    <nav aria-label="Contents">
+      <ol class="toc">
+        <li><a href="#ia">Layout &amp; information architecture</a></li>
+        <li><a href="#color">Color system</a></li>
+        <li><a href="#type">Typography</a></li>
+        <li><a href="#motion">Motion &amp; animation</a></li>
+        <li><a href="#hero" class="wow">Hero treatment</a></li>
+        <li><a href="#sections">Every section, redrawn</a></li>
+        <li><a href="#components">Component styling</a></li>
+        <li><a href="#states">Loading · empty · error</a></li>
+        <li><a href="#responsive">Responsive behavior</a></li>
+        <li><a href="#a11y">Accessibility</a></li>
+        <li><a href="#wow" class="wow">Signature moments</a></li>
+        <li><a href="#build">Build notes &amp; CSP</a></li>
+      </ol>
+    </nav>
+  </aside>
+
+  <!-- ============ BODY ============ -->
+  <main class="body">
+
+    <header class="masthead">
+      <div class="eyebrow">Product &amp; visual design · direction: precision dashboard</div>
+      <h2>A meteo console that stays <em>calm</em> while carrying everything.</h2>
+      <p class="lede">Aurora already runs a serious data engine — 10-year ERA5 climatology, CAPE/CIN/shear storm logic, radar, air quality, warming stripes — all client-side. This redesign keeps every byte of that engine and rebuilds the <b>surface</b> as a rigorous instrument: one clear grid, tabular data-ink, custom gauges and sparklines, and progressive disclosure so a dense app reads at a glance. Elegant restraint over spectacle, and it finally earns its name with a real <b>aurora / Kp forecast</b> from NOAA SWPC.</p>
+      <div class="mast-stats">
+        <span class="mstat"><b>0</b> new dependencies</span>
+        <span class="mstat"><b>2</b> CDN libs kept · Chart.js + Leaflet</span>
+        <span class="mstat"><b>+1</b> origin to CSP · SWPC</span>
+        <span class="mstat">EN · DE · °C · °F · dark · light preserved</span>
+        <span class="mstat">reduced-motion first-class</span>
+      </div>
+    </header>
+
+    <!-- ===== 1 · IA ===== -->
+    <section id="ia">
+      <div class="shead"><span class="snum">01</span><h3>Layout &amp; information architecture</h3><span class="stag">structure</span></div>
+      <p class="sintro">The current app is a single long scroll of full-width cards — correct, but it reads as a <b>feed</b>, not an instrument. The redesign keeps one scroll but imposes a <b>12-column console grid</b> (<code>max-width: 1240px</code>, up from 1080) with a clear altitude: a fixed summary that answers "what do I need to know right now," then progressively denser detail below. Nothing is removed; things are re-ranked and de-emphasized until asked for.</p>
+
+      <div class="panel">
+        <div class="p-bar"><span class="dot"></span><span class="p-t">Section order — top to bottom</span><span class="p-r">lead → detail</span></div>
+        <div class="p-body">
+          <div class="spec-scroll">
+          <table class="spec">
+            <thead><tr><th>Zone</th><th>Contains</th><th>Altitude / behavior</th></tr></thead>
+            <tbody>
+              <tr><td>Command bar</td><td>Brand · search · geo · alerts bell · lang · unit · theme · refresh</td><td>Sticky on scroll, condenses to a 56px bar with a hairline shadow once past the hero.</td></tr>
+              <tr><td>Ticker</td><td>Live clock · "on this day" fact · data-age dot</td><td>Single quiet line, <code>font-variant-numeric:tabular-nums</code>. Fact truncates with fade.</td></tr>
+              <tr><td>Alert deck</td><td>Extreme-weather alerts (heat/storm/rain/wind/frost/snow)</td><td>Leads only when non-empty and severe/high; otherwise collapses to a single "all clear" chip. This is the one thing allowed to shout.</td></tr>
+              <tr><td class="mono">Hero glance</td><td>Now temp + condition + 4-metric glance strip + 24h sparkline</td><td>The fold. Always fully visible on a laptop without scrolling. See §05.</td></tr>
+              <tr><td>Now-detail grid</td><td>Feels-like · wind · humidity · UV · pressure · dew point · visibility · sun</td><td>8–10 metric tiles, auto-fit. Now includes new Open-Meteo fields (dew point, visibility, cloud low/mid/high).</td></tr>
+              <tr><td>Nowcast</td><td>Rain in the next 2h (minutely_15 bars)</td><td>Only mounts when precip data exists; slides in under hero.</td></tr>
+              <tr><td class="mono">Sky tonight</td><td><b>NEW</b> — aurora/Kp gauge · moon phase · golden/blue hour · sun path</td><td>New astronomy panel. On-brand headline feature. See §11.</td></tr>
+              <tr><td>Hourly</td><td>48h chart (temp/precip/wind) + scrollable hour rail</td><td>Chart leads; rail is secondary detail below it.</td></tr>
+              <tr><td>Radar</td><td>Leaflet + RainViewer + extreme-weather scan</td><td>Lazy-mounts on scroll (unchanged trigger). Full-bleed within grid.</td></tr>
+              <tr><td>14-day</td><td>Daily rows with temp-range track + badges</td><td>Tap-to-expand preserved; row becomes a denser data line.</td></tr>
+              <tr><td>Climate context</td><td>Forecast-vs-normal · insights · records · warming stripes · on-this-day</td><td>Grouped under one "Climate" band with a shared sub-nav; heaviest analysis sits last by design.</td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="note">
+        <span class="lbl">Progressive disclosure — how a rich app stays calm</span>
+        Three tiers. <b>Tier 1 (always on):</b> alert deck + hero glance + now-detail — everything you need in one screen. <b>Tier 2 (one interaction):</b> chart metric toggles, day-row expand, radar scope/radius, hourly rail scroll — detail on demand. <b>Tier 3 (deep):</b> the Climate band and Sky panel's expandable readouts. The grid never shows two "loud" things at once: color and size are spent on the single most important state, everything else is quiet data-ink.
+      </div>
+
+      <div class="panel" style="margin-top:14px">
+        <div class="p-bar"><span class="dot"></span><span class="p-t">Console grid</span><span class="p-r">12-col · 20px gutter</span></div>
+        <div class="p-body tight">
+          <ul class="clean" style="margin-top:2px">
+            <li><b>Desktop ≥1080px:</b> hero spans 7 cols, Sky-tonight panel 5 cols beside it; now-detail is a 4-up tile row; hourly + 14-day are full 12; climate is a 2-up (chart | records).</li>
+            <li><b>Rhythm:</b> vertical spacing on an 8px base — <span class="val">14 / 22 / 34px</span> between tiles, panels, bands. Section labels sit on a <span class="val">4px</span> baseline offset from their panel.</li>
+            <li><b>Panels, not floating cards:</b> each section is a bordered console panel with a title bar (label + status), so the eye parses region boundaries instantly instead of a wall of equal cards.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 2 · COLOR ===== -->
+    <section id="color">
+      <div class="shead"><span class="snum">02</span><h3>Color system</h3><span class="stag">two accents · one job each</span></div>
+      <p class="sintro">The current palette leans on a single blue-lavender <code>--accent</code> and glassy cards. The console keeps the deep-night ground but sharpens it: a <b>true instrument neutral</b> (blue-biased slate, never flat grey), one <b>signature accent pair</b> — aurora <span style="color:var(--cy)">cyan</span> for interactive/primary and aurora <span style="color:var(--vi)">violet</span> for the astronomy/aurora domain — and a strictly separate <b>semantic severity ramp</b> that is never used as decoration.</p>
+
+      <div class="panel">
+        <div class="p-bar"><span class="dot"></span><span class="p-t">Dark — default ground</span><span class="p-r">observatory night</span></div>
+        <div class="p-body">
+          <div class="swatches">
+            <div class="sw"><div class="chip" style="background:#090F1A"></div><div class="meta"><div class="nm">ink / page</div><div class="hex">#090F1A</div><div class="use">Body ground, behind veil</div></div></div>
+            <div class="sw"><div class="chip" style="background:#0F1726"></div><div class="meta"><div class="nm">panel</div><div class="hex">#0F1726</div><div class="use">Console panel surface</div></div></div>
+            <div class="sw"><div class="chip" style="background:#131D30"></div><div class="meta"><div class="nm">panel-2</div><div class="hex">#131D30</div><div class="use">Tiles, inputs, sub-panels</div></div></div>
+            <div class="sw"><div class="chip" style="background:#182338"></div><div class="meta"><div class="nm">panel-3 / hover</div><div class="hex">#182338</div><div class="use">Hover, active row</div></div></div>
+            <div class="sw"><div class="chip" style="background:#EAF0FA"></div><div class="meta"><div class="nm">text</div><div class="hex">#EAF0FA</div><div class="use">Data-ink, headings</div></div></div>
+            <div class="sw"><div class="chip" style="background:#A6B2C8"></div><div class="meta"><div class="nm">muted</div><div class="hex">#A6B2C8</div><div class="use">Labels, prose</div></div></div>
+            <div class="sw"><div class="chip" style="background:#6E7C96"></div><div class="meta"><div class="nm">faint</div><div class="hex">#6E7C96</div><div class="use">Units, captions, axes</div></div></div>
+            <div class="sw"><div class="chip" style="background:rgba(150,172,210,.14)"></div><div class="meta"><div class="nm">line</div><div class="hex">rgba(150,172,210,.14)</div><div class="use">Hairline borders / grid</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:12px">
+        <div class="panel">
+          <div class="p-bar"><span class="dot" style="background:var(--cy)"></span><span class="p-t">Accents</span><span class="p-r">1 primary · 1 domain</span></div>
+          <div class="p-body">
+            <div class="swatches" style="grid-template-columns:1fr 1fr">
+              <div class="sw"><div class="chip" style="background:#5EC8E8"></div><div class="meta"><div class="nm">cyan · primary</div><div class="hex">#5EC8E8</div><div class="use">Focus, links, active toggles, "now" markers, chart temp accent-line endpoint</div></div></div>
+              <div class="sw"><div class="chip" style="background:#8B7BF2"></div><div class="meta"><div class="nm">violet · domain</div><div class="hex">#8B7BF2</div><div class="use">Aurora/Kp + astronomy only. Also storm severity fill.</div></div></div>
+            </div>
+            <div class="note" style="margin-top:14px"><span class="lbl">Rule</span> One accent leads any given view. Cyan is the interaction color; violet is reserved so that when the sky-tonight panel lights up, it reads as its own instrument — not decoration.</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="p-bar"><span class="dot" style="background:var(--sev)"></span><span class="p-t">Semantic — severity &amp; conditions</span><span class="p-r">meaning only</span></div>
+          <div class="p-body">
+            <div class="swatches" style="grid-template-columns:1fr 1fr">
+              <div class="sw"><div class="chip" style="background:#FF7A45"></div><div class="meta"><div class="nm">heat</div><div class="hex">#FF7A45</div></div></div>
+              <div class="sw"><div class="chip" style="background:#A98BFF"></div><div class="meta"><div class="nm">storm</div><div class="hex">#A98BFF</div></div></div>
+              <div class="sw"><div class="chip" style="background:#56B6F0"></div><div class="meta"><div class="nm">rain</div><div class="hex">#56B6F0</div></div></div>
+              <div class="sw"><div class="chip" style="background:#9FB0C4"></div><div class="meta"><div class="nm">wind</div><div class="hex">#9FB0C4</div></div></div>
+              <div class="sw"><div class="chip" style="background:#6AA8FF"></div><div class="meta"><div class="nm">frost</div><div class="hex">#6AA8FF</div></div></div>
+              <div class="sw"><div class="chip" style="background:#CFE8FF"></div><div class="meta"><div class="nm">snow</div><div class="hex">#CFE8FF</div></div></div>
+            </div>
+            <div class="note keep" style="margin-top:14px"><span class="lbl">Kept from engine</span> These are the exact hues <code>tColor()</code>, <code>MAPCOLORS</code> and the alert <code>sev-*</code> classes already emit — so no data-viz code changes, only where the palette is <em>allowed</em> to appear.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:12px">
+        <div class="p-bar"><span class="dot"></span><span class="p-t">Light theme</span><span class="p-r">paper console</span></div>
+        <div class="p-body">
+          <div class="swatches">
+            <div class="sw"><div class="chip" style="background:#F4F7FB;border-bottom:1px solid var(--line)"></div><div class="meta"><div class="nm">page</div><div class="hex">#F4F7FB</div><div class="use">Cool paper, not pure white</div></div></div>
+            <div class="sw"><div class="chip" style="background:#FFFFFF;border-bottom:1px solid var(--line)"></div><div class="meta"><div class="nm">panel</div><div class="hex">#FFFFFF</div><div class="use">Console surface</div></div></div>
+            <div class="sw"><div class="chip" style="background:#EEF2F8;border-bottom:1px solid var(--line)"></div><div class="meta"><div class="nm">panel-2</div><div class="hex">#EEF2F8</div><div class="use">Tiles</div></div></div>
+            <div class="sw"><div class="chip" style="background:#0B1524"></div><div class="meta"><div class="nm">text</div><div class="hex">#0B1524</div><div class="use">Data-ink</div></div></div>
+            <div class="sw"><div class="chip" style="background:#43536B"></div><div class="meta"><div class="nm">muted</div><div class="hex">#43536B</div></div></div>
+            <div class="sw"><div class="chip" style="background:#0E86AE"></div><div class="meta"><div class="nm">cyan (AA)</div><div class="hex">#0E86AE</div><div class="use">Darkened for 4.5:1 on paper</div></div></div>
+            <div class="sw"><div class="chip" style="background:#5B49C9"></div><div class="meta"><div class="nm">violet (AA)</div><div class="hex">#5B49C9</div></div></div>
+            <div class="sw"><div class="chip" style="background:rgba(15,23,42,.12)"></div><div class="meta"><div class="nm">line</div><div class="hex">rgba(15,23,42,.12)</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="note warnnote" style="margin-top:14px">
+        <span class="lbl">Palette shifts with conditions &amp; time of day</span>
+        Keep the existing <code>setBg()</code> logic but move it off the whole page onto a <b>single ambient wash</b> behind the hero panel only, at low opacity — so the console chrome stays neutral and legible while the hero still "feels" like the sky. Concretely: <code>#hero</code> gets a <code>::before</code> radial gradient driven by a <code>data-sky</code> attribute (<span class="val">clear-day, clear-night, storm, snow, rain, fog</span>) crossfading over <span class="val">1200ms</span>. A separate <code>--daylight</code> variable (0–1 from sunrise/sunset) nudges panel borders very slightly warmer at golden hour. Everything else — text, lines, tiles — is condition-independent, which is what keeps a data console readable in every weather.
+      </div>
+    </section>
+
+    <!-- ===== 3 · TYPE ===== -->
+    <section id="type">
+      <div class="shead"><span class="snum">03</span><h3>Typography</h3><span class="stag">no paid fonts</span></div>
+      <p class="sintro">The current app loads <b>Inter</b> from Google Fonts. The console keeps a clean grotesque for prose but adds the move that makes it read as an instrument: a <b>monospace for every number, label and unit</b> — tabular, engineering, unmistakably "data." Both are free. To stay bulletproof under the strict CSP, the safest path is a <b>system stack</b> (zero network, zero CSP risk, zero FOUT). If Inter is kept, it is already whitelisted in <code>style-src</code>/<code>font-src</code> — but the mono role must be added.</p>
+
+      <div class="panel">
+        <div class="p-bar"><span class="dot"></span><span class="p-t">Two roles</span><span class="p-r">sans + mono</span></div>
+        <div class="p-body">
+          <div class="grid2">
+            <div>
+              <div class="dt-lab" style="margin-bottom:6px">Display / body — sans</div>
+              <p style="font-size:13px;color:var(--muted);margin:0 0 8px">Inter (kept, already in CSP) <b>or</b> pure system:</p>
+              <code style="display:block;font-size:11.5px;color:var(--cy);background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;line-height:1.6">--sans: 'Inter', ui-sans-serif,<br>-apple-system, 'Segoe UI', Roboto, sans-serif;</code>
+            </div>
+            <div>
+              <div class="dt-lab" style="margin-bottom:6px">Data / labels — mono <span style="color:var(--vi)">◆ new</span></div>
+              <p style="font-size:13px;color:var(--muted);margin:0 0 8px">System mono — free, native, no download:</p>
+              <code style="display:block;font-size:11.5px;color:var(--cy);background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;line-height:1.6">--mono: ui-monospace, 'SF Mono',<br>'Cascadia Code', 'Roboto Mono', Consolas, monospace;</code>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:12px">
+        <div class="p-bar"><span class="dot"></span><span class="p-t">Scale &amp; specimens</span><span class="p-r">this doc uses it live</span></div>
+        <div class="p-body" style="padding:0">
+          <div class="specimen">
+            <div class="specrow"><div class="lab">Hero temp<br>weight 250</div><div class="demo"><span class="dt-hero">18°</span> <span style="color:var(--faint);font-size:14px">— sans, tabular, −.04em, the one giant number</span></div></div>
+            <div class="specrow"><div class="lab">Section h3<br>640</div><div class="demo"><span class="dt-h3">14-day forecast</span></div></div>
+            <div class="specrow"><div class="lab">Body<br>400/450</div><div class="demo"><span class="dt-body">Peaks at 33° on Sat, 6° above the local normal.</span></div></div>
+            <div class="specrow"><div class="lab">Data value<br>mono 600</div><div class="demo"><span class="dt-data">1013 hPa</span> &nbsp; <span class="dt-data">72%</span> &nbsp; <span class="dt-data">14 km/h</span></div></div>
+            <div class="specrow"><div class="lab">Label / unit<br>mono caps</div><div class="demo"><span class="dt-lab">Feels like · UV index · dew point</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="note keep" style="margin-top:14px"><span class="lbl">Rules</span>
+      Type scale (px): <span class="val">78 / 44</span> hero · <span class="val">23</span> h3 · <span class="val">17</span> tile value · <span class="val">15.5</span> body · <span class="val">13</span> caption · <span class="val">11</span> mono-label. Weights: sans <b>250 / 400 / 600 / 680</b>; mono <b>500 / 600</b>. Every metric value, axis tick, clock, coordinate and unit uses <code>font-variant-numeric: tabular-nums</code> so digits never jitter on refresh. Uppercase mono labels carry <span class="val">.12–.16em</span> tracking; headings get <code>text-wrap: balance</code>. Running prose capped at ~<span class="val">68ch</span>.</div>
+    </section>
+
+    <!-- ===== 4 · MOTION ===== -->
+    <section id="motion">
+      <div class="shead"><span class="snum">04</span><h3>Motion &amp; animation</h3><span class="stag">transform + opacity only</span></div>
+      <p class="sintro">The current app animates card entry, icon float/spin, rain drops and lightning flash. The console keeps motion <b>diegetic and cheap</b> — it should feel like an instrument settling, not a splash screen. Everything below is GPU-friendly (<code>transform</code>/<code>opacity</code> only, no layout-triggering props), tuned for a modest laptop, and fully switched off under <code>prefers-reduced-motion</code>.</p>
+
+      <div class="panel">
+        <div class="p-bar"><span class="dot"></span><span class="p-t">Motion inventory</span><span class="p-r">all &lt; 600ms</span></div>
+        <div class="p-body">
+          <div class="motiongrid">
+            <div class="mo"><div class="mo-n">Panel settle (load)</div><div class="mo-d">Panels fade + rise <span class="val">8px</span>, staggered <span class="val">40ms</span> per panel, capped so nothing past the fold delays the fold.</div><div class="mo-e">opacity 0→1, translateY(8px→0) · 420ms · cubic-bezier(.2,.7,.2,1)</div></div>
+            <div class="mo"><div class="mo-n">Gauge sweep</div><div class="mo-d">Kp arc &amp; AQI ring draw once on mount via <code>stroke-dashoffset</code>, then hold. Needle eases to value.</div><div class="mo-e">stroke-dashoffset · 900ms · ease-out · once</div></div>
+            <div class="mo"><div class="mo-n">Value crossfade</div><div class="mo-d">On refresh/unit-switch, changed numbers crossfade rather than snap — signals "new data" without a reflow.</div><div class="mo-e">opacity 1→.35→1 · 260ms</div></div>
+            <div class="mo"><div class="mo-n">Toggle thumb</div><div class="mo-d">Segmented controls slide an active pill under the label with a shared-element transform.</div><div class="mo-e">transform translateX · 180ms · ease</div></div>
+            <div class="mo"><div class="mo-n">Row expand (14-day)</div><div class="mo-d">Detail grid grows via max-height + opacity; chevron rotates. No JS height measuring on the hot path.</div><div class="mo-e">max-height + opacity · 240ms</div></div>
+            <div class="mo"><div class="mo-n">Ambient sky wash</div><div class="mo-d">Hero background gradient crossfades when the condition category changes. Slow, behind glass, never distracting.</div><div class="mo-e">background 1200ms · linear · hero only</div></div>
+          </div>
+          <div class="note warnnote" style="margin-top:14px"><span class="lbl">Reduced-motion fallback</span>
+          One rule: <code>@media (prefers-reduced-motion: reduce){ *{animation:none!important;transition:none!important} }</code> plus explicit final states (gauges render at full value, panels at opacity 1). Extends the block already in <code>styles.css</code>. The ambient wash still <em>changes</em> color on condition change — it just does so instantly, so information is never lost.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 5 · HERO ===== -->
+    <section id="hero">
+      <div class="shead"><span class="snum">05</span><h3>Hero treatment</h3><span class="stag wowtag">◆ signature</span></div>
+      <p class="sintro">The hero stops being "a big temperature and a sentence" and becomes the <b>glance instrument</b>: the one giant number, condition, feels-like, and a built-in <b>4-cell glance strip + 24-hour temperature sparkline</b> — everything you'd want before deciding whether to read further. A quiet ambient sky wash sits behind it so it still feels like weather, but the data stays on neutral panel ink.</p>
+
+      <div class="mock" data-sky="clear-day" role="img" aria-label="Hero mockup: 18 degrees, partly cloudy, feels like 16, with a glance strip and 24-hour sparkline.">
+        <div class="h-top"><span class="pin"></span>BERLIN · BERLIN · DE &nbsp;·&nbsp; <span style="color:var(--faint)">updated 14:32 · live</span></div>
+        <div class="h-grid">
+          <div>
+            <div class="h-temp">18°</div>
+          </div>
+          <div>
+            <div class="h-cond">Partly cloudy</div>
+            <div class="h-feel">Feels like 16° · H 21° / L 11° · <span style="color:#fff">+3° vs normal</span></div>
+            <svg class="h-spark" width="100%" height="46" viewBox="0 0 340 46" preserveAspectRatio="none" aria-hidden="true">
+              <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5EC8E8" stop-opacity=".28"/><stop offset="1" stop-color="#5EC8E8" stop-opacity="0"/></linearGradient></defs>
+              <path d="M0,30 C40,28 60,18 90,16 C130,13 150,22 190,20 C230,18 250,10 290,12 C315,13 330,20 340,22 L340,46 L0,46 Z" fill="url(#sg)"/>
+              <path d="M0,30 C40,28 60,18 90,16 C130,13 150,22 190,20 C230,18 250,10 290,12 C315,13 330,20 340,22" fill="none" stroke="#5EC8E8" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="0" cy="30" r="2.6" fill="#5EC8E8"/><circle cx="290" cy="12" r="2.6" fill="#fff"/>
+            </svg>
+          </div>
+        </div>
+        <div class="glance">
+          <div class="gcell"><div class="gl">Wind</div><div class="gv">14 <small>km/h</small></div></div>
+          <div class="gcell"><div class="gl">Humidity</div><div class="gv">62<small>%</small></div></div>
+          <div class="gcell"><div class="gl">UV</div><div class="gv">4 <small>mod</small></div></div>
+          <div class="gcell"><div class="gl">Rain 2h</div><div class="gv">0 <small>mm</small></div></div>
+        </div>
+      </div>
+
+      <ul class="clean" style="margin-top:14px">
+        <li><b>Left:</b> temperature at <span class="val">78–96px</span>, weight 250, tabular. The animated weather glyph moves to a compact spot by the condition, not competing with the number.</li>
+        <li><b>Right:</b> condition, feels-like, H/L, and a live <b>anomaly readout</b> ("+3° vs normal") pulled straight from the existing <code>analyze()</code> output — surfacing the app's best hidden insight into the fold.</li>
+        <li><b>Glance strip:</b> the four fields most people check — wind, humidity, UV, next-2h rain — rendered as a hairline-divided quad so the whole "should I go out" question is answered above the fold.</li>
+        <li><b>Sparkline:</b> a 24h temperature micro-chart (pure inline SVG, not Chart.js — cheap, no library call) with an emphasized "now" endpoint. Sets up the full 48h chart below without duplicating it.</li>
+        <li><b>Bookmark star</b> stays top-right of the location line; ambient sky wash is the <code>::before</code> described in §02, crossfading on condition change only.</li>
+      </ul>
+    </section>
+
+    <!-- ===== 6 · SECTIONS ===== -->
+    <section id="sections">
+      <div class="shead"><span class="snum">06</span><h3>Every section, redrawn</h3><span class="stag">before → after</span></div>
+      <p class="sintro">Each existing section, kept and re-treated. The data engine behind each is unchanged; only the surface and information density move.</p>
+
+      <div class="panel">
+        <div class="p-bar"><span class="dot" style="background:var(--sev)"></span><span class="p-t">Alert deck</span><span class="p-r">the one loud element</span></div>
+        <div class="p-body">
+          <div class="ba">
+            <div class="col now"><div class="h">Now</div><p>Stacked full-width tinted cards, one per alert, always rendered (incl. a green "all clear").</p></div>
+            <div class="col new"><div class="h">Console</div><p>Severity-striped rows: a <span class="val">3px</span> left bar in the <code>sev-*</code> hue, mono severity pill, and the "when" range as a mono date-chip. Multiple alerts collapse into a <b>deck</b> — top alert expanded, rest as one-line summaries you can expand. "All clear" shrinks to a single inline chip so calm weather doesn't cost a full card.</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:12px">
+        <div class="p-bar"><span class="dot"></span><span class="p-t">Now-detail tiles</span><span class="p-r">+ new fields</span></div>
+        <div class="p-body">
+          <div class="ba">
+            <div class="col now"><div class="h">Now</div><p>6 metric tiles (feels, wind, humidity, UV, pressure, sunrise), 23px value.</p></div>
+            <div class="col new"><div class="h">Console</div><p>8–10 tiles, auto-fit <code>minmax(140px,1fr)</code>. Value in <b>mono 17px</b>, label in mono caps, a hairline <b>micro-bar or trend arrow</b> per tile where a range exists (UV vs day-max, pressure rising/falling from the hourly series). Adds free Open-Meteo fields already fetchable: <b>dew point, visibility, cloud low/mid/high, pressure tendency</b>.</p></div>
+          </div>
+          <div class="note"><span class="lbl">Micro-viz</span> Each tile can carry a 24px sparkline built from the hourly array you already fetch — e.g. pressure over 24h, humidity trend — turning a flat number into a glanceable direction at near-zero cost.</div>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:12px">
+        <div class="panel">
+          <div class="p-bar"><span class="dot" style="background:var(--rain)"></span><span class="p-t">Rain nowcast</span></div>
+          <div class="p-body tight"><p style="margin:0;font-size:13.5px;color:var(--muted)">Keep the 15-min bar array; restyle bars to the rain ramp with rounded tops and a mono time axis (<code>now · +1h · +2h</code>). Headline uses the same message logic, set in mono. Add a faint "intensity" y-guide line at the light/moderate threshold.</p></div>
+        </div>
+        <div class="panel">
+          <div class="p-bar"><span class="dot"></span><span class="p-t">Air quality &amp; pollen</span></div>
+          <div class="p-body tight"><p style="margin:0;font-size:13.5px;color:var(--muted)">AQI becomes a <b>radial ring gauge</b> (0–100+) colored by category instead of a flat number; pollutant chips become a compact mono readout row. Pollen keeps the labeled bars but on the tile grid, category color driven by <code>pollenLvl()</code> unchanged.</p></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:12px">
+        <div class="p-bar"><span class="dot" style="background:var(--heat)"></span><span class="p-t">Hourly (48h)</span><span class="p-r">chart-led</span></div>
+        <div class="p-body">
+          <div class="ba">
+            <div class="col now"><div class="h">Now</div><p>Segmented toggle → Chart.js line/bar, then a scrollable hour rail with icons.</p></div>
+            <div class="col new"><div class="h">Console</div><p>Chart gets the console Chart.js theme (§07): hairline grid, mono ticks, gradient area fill, no chart junk. Toggle pill slides. The hour rail becomes a denser <b>strip</b>: time (mono) · glyph · temp · a 2px precip-probability underbar. A thin "now" cyan vertical rule ties rail to chart. <b>Sunrise/sunset markers</b> drawn on both.</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:12px">
+        <div class="p-bar"><span class="dot"></span><span class="p-t">14-day forecast</span><span class="p-r">data line</span></div>
+        <div class="p-body">
+          <p style="margin:0 0 10px;font-size:13.5px;color:var(--muted)">Rows become a tight instrument line, all values in mono, tap-to-expand preserved:</p>
+          <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden;font-family:var(--mono);font-size:12.5px">
+            <div style="display:grid;grid-template-columns:66px 30px 40px 1fr 78px 60px;gap:10px;align-items:center;padding:10px 14px;background:var(--panel-2)">
+              <span style="color:var(--text);font-weight:600">Sat 5</span>
+              <span style="color:var(--heat)">▲</span>
+              <span style="color:var(--faint)">33%</span>
+              <span style="position:relative;height:6px;border-radius:4px;background:rgba(150,172,210,.18)"><span style="position:absolute;left:22%;width:52%;height:6px;border-radius:4px;background:linear-gradient(90deg,#56a0e8,#ff7a45)"></span></span>
+              <span style="color:var(--faint);text-align:right">11° <span style="color:var(--text);font-weight:600">33°</span></span>
+              <span style="text-align:right;color:var(--faint)">＋6°</span>
+            </div>
+            <div style="display:grid;grid-template-columns:66px 30px 40px 1fr 78px 60px;gap:10px;align-items:center;padding:10px 14px">
+              <span style="color:var(--text);font-weight:600">Sun 6</span>
+              <span style="color:var(--storm)">⚡</span>
+              <span style="color:var(--rain)">80%</span>
+              <span style="position:relative;height:6px;border-radius:4px;background:rgba(150,172,210,.18)"><span style="position:absolute;left:14%;width:40%;height:6px;border-radius:4px;background:linear-gradient(90deg,#5a82d8,#3fc1c9)"></span></span>
+              <span style="color:var(--faint);text-align:right">9° <span style="color:var(--text);font-weight:600">24°</span></span>
+              <span style="text-align:right;color:var(--faint)">−1°</span>
+            </div>
+          </div>
+          <p style="margin:10px 0 0;font-size:12.5px;color:var(--faint)">Columns: day · condition badge · precip-prob · shared-scale temp track (all 14 days on one min→max axis, so the week's shape is legible) · lo/hi · anomaly vs normal. Badges (<span style="color:var(--heat)">heat</span> / <span style="color:var(--storm)">storm</span> / <span style="color:var(--wind)">wind</span>) stay from <code>buildAlerts</code>/<code>stormLevel</code>. Expanded row keeps the detail grid, restyled to mono tiles.</p>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:12px">
+        <div class="p-bar"><span class="dot" style="background:var(--vi)"></span><span class="p-t">Climate context band</span><span class="p-r">grouped</span></div>
+        <div class="p-body">
+          <p style="margin:0;font-size:13.5px;color:var(--muted)">The three climate sections (forecast-vs-normal, insights+records, warming stripes+on-this-day) unify under one <b>Climate</b> band with a shared header and a small in-band sub-nav. Insights become mono stat-cards with a colored value; the forecast-vs-normal Chart.js chart gets the console theme with the normal-range band as a soft fill. <b>Warming stripes</b> keep the exact <code>stripeColor()</code> ramp but gain hover-scrub: hovering a year shows its mean in a mono tooltip. Records row → three mono tiles with tiny glyphs.</p>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:12px">
+        <div class="p-bar"><span class="dot" style="background:var(--rain)"></span><span class="p-t">Radar &amp; extreme-weather map</span></div>
+        <div class="p-body">
+          <p style="margin:0;font-size:13.5px;color:var(--muted)">Leaflet keeps CARTO + RainViewer. Controls (scope / radius / country / radar / play) move into a single mono <b>control cluster</b> across the panel title bar. The map gets a hairline inner border and a mono legend/time readout. Extreme-weather pins keep <code>MAPCOLORS</code>; popups restyled to mono. The near-me radius circle uses cyan at low opacity — consistent with the primary accent.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 7 · COMPONENTS ===== -->
+    <section id="components">
+      <div class="shead"><span class="snum">07</span><h3>Component styling</h3><span class="stag">the kit</span></div>
+
+      <div class="panel">
+        <div class="p-bar"><span class="dot"></span><span class="p-t">Tokens &amp; primitives</span></div>
+        <div class="p-body">
+          <div class="spec-scroll">
+          <table class="spec">
+            <thead><tr><th>Component</th><th>Treatment</th></tr></thead>
+            <tbody>
+              <tr><td>Panel</td><td><code>border-radius:16px</code> · <code>1px solid --line</code> · subtle top-lit gradient <code>linear-gradient(180deg,#0F1726,#0C1422)</code> · title bar with status dot + mono label. Replaces the heavy <code>--blur</code> glass; keep a lighter <code>backdrop-filter: blur(8px)</code> only on the sticky command bar.</td></tr>
+              <tr><td>Tile</td><td><code>--panel-2</code> · <code>radius 12px</code> · mono label (caps, tracked) top, mono value 17px, optional 24px sparkline. No shadow — a hairline is enough at this density.</td></tr>
+              <tr><td>Chip</td><td>Pill, <code>1px --line-2</code>, mono 11px. Active = cyan border + faint cyan fill. Fave chips, radius chips, scope toggle all share this.</td></tr>
+              <tr><td>Segmented toggle</td><td>Track <code>--panel-2</code>, sliding active pill (transform), mono labels. Replaces the current rounded button group.</td></tr>
+              <tr><td>Icon button</td><td>44px hit-area kept (touch), <code>radius 12px</code>, <code>--panel</code> ground, cyan ring on focus, <code>scale(.94)</code> active. State buttons (bell on, radar on) switch border to their semantic hue.</td></tr>
+              <tr><td>Search + results</td><td>Input mono-adjacent, cyan focus ring; results dropdown = panel with hairline rows, keyboard-navigable (↑↓/Enter), active row cyan-tinted.</td></tr>
+              <tr><td>Gauge</td><td>Reusable radial: SVG arc, <code>stroke-dasharray</code> sweep, mono center value. Used for AQI, Kp, and UV.</td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:12px">
+        <div class="panel">
+          <div class="p-bar"><span class="dot" style="background:var(--heat)"></span><span class="p-t">Chart.js theme</span><span class="p-r">shared config</span></div>
+          <div class="p-body">
+            <ul class="clean" style="margin-top:2px">
+              <li>Grid: <code>--line</code> hairlines, <b>x-grid off</b>, y only.</li>
+              <li>Ticks: mono, <code>--faint</code>, <code>tabular-nums</code>, tight <code>maxTicksLimit</code>.</li>
+              <li>Lines: <span class="val">2.4px</span>, tension <span class="val">.35</span>, <code>pointRadius:0</code> except an emphasized endpoint dot.</li>
+              <li>Fills: vertical gradient of the series hue, <span class="val">.14 → 0</span> alpha (already the pattern in <code>renderHourlyChart</code>).</li>
+              <li>Tooltip: dark panel, mono, no legend box; hairline caret.</li>
+              <li>Temp = heat hue, precip = rain hue, wind = wind hue — one shared <code>chartTheme(dark)</code> helper feeds both existing charts.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="p-bar"><span class="dot" style="background:var(--rain)"></span><span class="p-t">Leaflet theme</span></div>
+          <div class="p-body">
+            <ul class="clean" style="margin-top:2px">
+              <li>CARTO <code>dark_all</code> / <code>light_all</code> kept, swapped on theme (existing <code>addBase()</code>).</li>
+              <li>Container: hairline inner border, <code>radius 14px</code>, <code>--panel</code> loading ground.</li>
+              <li>Zoom control restyled: panel chips, not default white boxes.</li>
+              <li>Pins: <code>circleMarker</code> in <code>MAPCOLORS</code>, white 1px ring, size by severity (kept).</li>
+              <li>Popups + legend + radar-time: mono, panel background, hairline border.</li>
+              <li>Attribution kept, dimmed to <code>--faint</code>.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 8 · STATES ===== -->
+    <section id="states">
+      <div class="shead"><span class="snum">08</span><h3>Loading · empty · error</h3><span class="stag">honest states</span></div>
+      <div class="panel">
+        <div class="p-body">
+          <div class="spec-scroll">
+          <table class="spec">
+            <thead><tr><th>State</th><th>Treatment</th></tr></thead>
+            <tbody>
+              <tr><td>First load</td><td>Replace the full-screen spinner overlay with <b>skeleton panels</b> — each console panel renders its title bar immediately and a shimmering hairline placeholder for its body (opacity pulse, reduced-motion → static). The page frame appears instantly; data fills in. Ticker shows "Reading the sky…" in mono.</td></tr>
+              <tr><td>Per-panel loading</td><td>Panels load independently (they already fetch in parallel). Each shows its own inline skeleton so a slow archive request never blocks the hero. Status dot in the title bar goes from faint → cyan when live.</td></tr>
+              <tr><td>Empty — nowcast</td><td>Panel simply doesn't mount (existing behavior) — no empty box.</td></tr>
+              <tr><td>Empty — pollen / AQI</td><td>Keep the localized "not available for this region" line, set in muted mono inside the panel, not a broken tile.</td></tr>
+              <tr><td>Empty — no alerts</td><td>Single green "all clear" chip with the existing <code>no_extremes</code> copy — calm is a valid, quiet state.</td></tr>
+              <tr><td>Empty — climate/stripes</td><td>Existing "unavailable for this location" fallback, restyled as a centered muted line within the panel.</td></tr>
+              <tr><td>Error — main load</td><td>Keep the retry affordance but as a proper panel: mono error line, the actual <code>e.message</code> in <code>--faint</code>, and a real <b>Retry</b> button (not an inline link) that re-runs <code>load(true)</code>. Offline is detected via <code>navigator.onLine</code> → tailored copy.</td></tr>
+              <tr><td>Error — radar/scan</td><td>Existing localized <code>map_failed</code> status in the map title bar; map stays usable.</td></tr>
+              <tr><td>Stale data</td><td>If a refresh fails, keep last-good data visible and mark the ticker dot amber with a mono "last updated HH:MM" — never blank the console.</td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 9 · RESPONSIVE ===== -->
+    <section id="responsive">
+      <div class="shead"><span class="snum">09</span><h3>Responsive behavior</h3><span class="stag">mobile → desktop</span></div>
+      <div class="grid3">
+        <div class="panel">
+          <div class="p-bar"><span class="dot"></span><span class="p-t">Mobile ≤560</span></div>
+          <div class="p-body tight"><ul class="clean" style="margin-top:0">
+            <li>Single column, full-bleed panels, 16px gutters.</li>
+            <li>Hero temp <span class="val">64px</span>; glance strip 2×2.</li>
+            <li>Command bar: brand + search collapse; actions become an overflow menu behind one button.</li>
+            <li>14-day track hides the anomaly column; kept on expand.</li>
+            <li>Chart height <span class="val">160px</span>; hour rail scrolls (kept).</li>
+            <li>Sticky bar shrinks to 52px.</li>
+          </ul></div>
+        </div>
+        <div class="panel">
+          <div class="p-bar"><span class="dot"></span><span class="p-t">Tablet 561–1024</span></div>
+          <div class="p-body tight"><ul class="clean" style="margin-top:0">
+            <li>Hero full width; Sky-tonight drops below hero, full width.</li>
+            <li>Now-detail tiles 3–4 up (auto-fit).</li>
+            <li>Climate band stacks chart over records.</li>
+            <li>Map <span class="val">380px</span>.</li>
+            <li>Two-up where <code>minmax(220px,1fr)</code> allows.</li>
+          </ul></div>
+        </div>
+        <div class="panel">
+          <div class="p-bar"><span class="dot" style="background:var(--cy)"></span><span class="p-t">Desktop ≥1080</span></div>
+          <div class="p-body tight"><ul class="clean" style="margin-top:0">
+            <li>Full 12-col grid, <code>max-width 1240px</code>.</li>
+            <li>Hero 7 cols · Sky-tonight 5 cols, side by side.</li>
+            <li>Now-detail 4-up; climate 2-up.</li>
+            <li>Everything above the map visible in ~1.5 screens.</li>
+            <li>Hover affordances (scrub, tooltips) enabled.</li>
+          </ul></div>
+        </div>
+      </div>
+      <div class="note"><span class="lbl">Technique</span> All grids are <code>grid-template-columns: repeat(auto-fit, minmax(…,1fr))</code> with <code>minmax(0,1fr)</code> guards so nothing overflows; wide content (chart, map, 14-day track, spec tables) each get their own <code>overflow-x:auto</code> container so the page body never scrolls sideways. Breakpoints extend the existing single <code>@media(max-width:560px)</code> block to a small set: <span class="val">560 · 880 · 1080</span>.</div>
+    </section>
+
+    <!-- ===== 10 · A11Y ===== -->
+    <section id="a11y">
+      <div class="shead"><span class="snum">10</span><h3>Accessibility</h3><span class="stag">AA · keyboard · SR</span></div>
+      <div class="panel">
+        <div class="p-body">
+          <div class="spec-scroll">
+          <table class="spec">
+            <thead><tr><th>Concern</th><th>Commitment</th></tr></thead>
+            <tbody>
+              <tr><td>Contrast</td><td>All text ≥ <b>4.5:1</b> (≥3:1 for ≥24px). Cyan/violet <b>darkened in light theme</b> (<code>#0E86AE</code>/<code>#5B49C9</code>) specifically to clear AA on paper. Severity hues are paired with text/icon + label, never color-only. Data-ink <code>#EAF0FA</code> on <code>#0F1726</code> ≈ 15:1.</td></tr>
+              <tr><td>Focus</td><td>Visible ring on every interactive element: <code>outline:2px solid var(--cy); outline-offset:2px</code>, never removed. Sticky bar accounts for scroll-into-view via <code>scroll-margin-top</code>.</td></tr>
+              <tr><td>Keyboard</td><td>Full tab order; search results arrow-navigable (extends existing pattern); 14-day rows are already <code>role="button" tabindex="0"</code> with Enter/Space — kept. Toggles are real <code>&lt;button&gt;</code>s with <code>aria-pressed</code>. Map focusable, radar controls reachable.</td></tr>
+              <tr><td>Screen readers</td><td>Each panel is a <code>&lt;section aria-labelledby&gt;</code>. Charts keep <code>role="img"</code> + descriptive <code>aria-label</code> (already present) and gain an offscreen data summary. Alerts stay <code>aria-live="polite"</code>. Gauges expose value via <code>aria-label</code> and text.</td></tr>
+              <tr><td>Motion</td><td><code>prefers-reduced-motion</code> disables all transitions/animations and renders gauges + panels at final state (§04).</td></tr>
+              <tr><td>Targets &amp; zoom</td><td>44px min touch targets kept; layout survives 200% zoom (relative units, <code>max-width:5.0</code> already allows pinch). Icon-only buttons keep <code>aria-label</code>.</td></tr>
+              <tr><td>Color-independence</td><td>Anomaly shown as sign + number, not just hue; alert severity shown as pill text; precip as % text, not only bar. The console never encodes meaning in color alone.</td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 11 · WOW ===== -->
+    <section id="wow">
+      <div class="shead"><span class="snum">11</span><h3>Signature moments</h3><span class="stag wowtag">◆ unique to this direction</span></div>
+      <p class="sintro">Three things a generic weather app won't have — each grounded in a confirmed free, no-key data source and in the app's own identity.</p>
+
+      <div class="wow">
+        <div class="wtop"><span class="wn">A</span><span class="wt">Aurora tonight — the app finally earns its name</span><span class="wtag">NOAA SWPC</span></div>
+        <div class="wbody">
+          <div class="aur">
+            <svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Kp index gauge reading 5, active — aurora possible.">
+              <circle cx="60" cy="60" r="48" fill="none" stroke="rgba(150,172,210,.16)" stroke-width="10"/>
+              <circle cx="60" cy="60" r="48" fill="none" stroke="#8B7BF2" stroke-width="10" stroke-linecap="round" stroke-dasharray="301.6" stroke-dashoffset="133" transform="rotate(-90 60 60)"/>
+              <text x="60" y="56" text-anchor="middle" fill="#EAF0FA" style="font:600 30px var(--mono)">5</text>
+              <text x="60" y="76" text-anchor="middle" fill="#A6B2C8" style="font:600 10px var(--mono);letter-spacing:.14em">KP INDEX</text>
+            </svg>
+            <div class="band">
+              A live <b>Kp gauge</b> and tonight's <b>aurora probability</b> for your exact lat/lon — from the planetary-K feed and the OVATION aurora grid (nearest cell lookup). Plus the 3-day geomagnetic outlook as a mono mini-forecast.
+              <div class="chipset">
+                <span class="uchip on"><span class="sw" style="background:var(--vi)"></span>Aurora possible</span>
+                <span class="uchip"><span class="sw" style="background:var(--faint)"></span>Prob 38% · nearest cell</span>
+                <span class="uchip"><span class="sw" style="background:var(--cy)"></span>Best 22:00–01:00</span>
+              </div>
+              <p style="margin:10px 0 0;font-size:12px;color:var(--faint)">Adds <code>services.swpc.noaa.gov</code> to <code>connect-src</code>. Cached 15 min. Pairs with locally-computed <b>moon phase</b> + <b>golden/blue hour</b> in the same "Sky tonight" panel — no API needed for those.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="wow" style="margin-top:12px">
+        <div class="wtop"><span class="wn">B</span><span class="wt">The one-screen glance — hero as instrument</span><span class="wtag">no new data</span></div>
+        <div class="wbody">
+          Everything that matters — now temp, condition, feels-like, <b>live anomaly vs local normal</b>, the four go/no-go metrics, and a 24h sparkline — resolves in a single fold with zero interaction. It reuses data the app already fetches, so it costs nothing but re-composition. The "+3° vs normal" readout, currently buried in the history section, becomes the app's headline insight where people actually look. This is the calm-yet-dense thesis of the whole direction.
+        </div>
+      </div>
+
+      <div class="wow" style="margin-top:12px">
+        <div class="wtop"><span class="wn">C</span><span class="wt">Scrubbable warming stripes + climate scrub-line</span><span class="wtag">ERA5, already loaded</span></div>
+        <div class="wbody">
+          The 40-year warming stripes gain a <b>hover/drag scrubber</b>: move across the years and a mono tooltip reads out that year's mean and its delta from the 1980s baseline, with a thin vertical marker — turning a static gradient into an explorable 40-year record. On the forecast-vs-normal chart, a shared vertical scrub-line links hovering any day to its anomaly and percentile from <code>analyze()</code>. Both are pure client-side reads of data already in memory. A quietly beautiful, genuinely informative interaction that no mass-market weather app offers.
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 12 · BUILD ===== -->
+    <section id="build">
+      <div class="shead"><span class="snum">12</span><h3>Build notes &amp; CSP</h3><span class="stag">stays static</span></div>
+      <div class="panel">
+        <div class="p-body">
+          <ul class="clean vi" style="margin-top:2px">
+            <li><b>No framework, no build step, no backend</b> — remains vanilla HTML/CSS/JS on GitHub Pages. The redesign is CSS-token + render-function work over the existing engine; JS data functions (<code>getForecast</code>, <code>buildClim</code>, <code>analyze</code>, <code>buildAlerts</code>, <code>scanArea</code>) are untouched.</li>
+            <li><b>Libraries unchanged:</b> Chart.js 4.4.1 + Leaflet 1.9.4, same CDN + SRI. New charts (sparklines, gauges) are hand-rolled inline SVG — no new library.</li>
+            <li><b>One CSP change:</b> add <code>https://services.swpc.noaa.gov</code> to <code>connect-src</code> for the aurora feature. Everything else (Open-Meteo extended fields: uv_index, dew_point_2m, visibility, cloud_cover_low/mid/high, pressure tendency, sunrise/sunset) uses origins already whitelisted.</li>
+            <li><b>Fonts:</b> if going system-only, drop the Google Fonts <code>&lt;link&gt;</code> and its <code>style-src</code>/<code>font-src</code> entries → fewer origins, zero FOUT. If keeping Inter, no CSP change; just add the system mono stack (no network).</li>
+            <li><b>Perf on a modest laptop:</b> glassy <code>backdrop-filter: blur(20px)</code> across every card is the current cost center — the console replaces it with flat panels + hairlines and keeps blur only on the sticky bar. Sparklines/gauges are static SVG. Net: fewer composited layers, smoother scroll.</li>
+            <li><b>i18n:</b> every new string (Sky-tonight, aurora states, tile labels, gauge captions) added to the EN/DE dictionaries in <code>i18n.js</code> following the existing <code>tr(key,params)</code> pattern — full parity maintained.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="foot">
+        <span class="mono">AURORA · PRECISION CONSOLE · REDESIGN SPEC</span>
+        <span>Grounded in index.html · styles.css · app.js · i18n.js — engine preserved, surface rebuilt.</span>
+      </div>
+    </section>
+
+  </main>
+</div>
+</div>

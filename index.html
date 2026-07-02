@@ -2,7 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://cdnjs.cloudflare.com https://*.basemaps.cartocdn.com https://*.rainviewer.com; connect-src 'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://air-quality-api.open-meteo.com https://geocoding-api.open-meteo.com https://api.rainviewer.com https://en.wikipedia.org https://de.wikipedia.org https://history.muffinlabs.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://cdnjs.cloudflare.com https://*.basemaps.cartocdn.com https://*.rainviewer.com; connect-src 'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://air-quality-api.open-meteo.com https://geocoding-api.open-meteo.com https://marine-api.open-meteo.com https://flood-api.open-meteo.com https://api.rainviewer.com https://services.swpc.noaa.gov https://en.wikipedia.org https://de.wikipedia.org https://history.muffinlabs.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
 <meta name="color-scheme" content="dark light" />
 <meta name="theme-color" content="#0b1220" />
@@ -67,18 +67,29 @@
       <section id="faves" class="faves"></section>
       <section id="alerts" class="alerts" aria-live="polite"></section>
       <section id="hero" class="hero card"></section>
+      <div id="staleBadge" class="stale-badge" hidden></div>
       <div id="nowcast" class="nowcast card"></div>
       <section id="details" class="details"></section>
+
+      <h2 class="section-title" id="sunmoonTitle"><span data-i18n="sec_sunmoon">Sun &amp; Moon</span></h2>
+      <section id="sunmoon" class="details"></section>
+
+      <h2 class="section-title" id="auroraTitle"><span data-i18n="sec_aurora">Aurora tonight</span></h2>
+      <section id="aurora" class="aurora"></section>
 
       <h2 class="section-title"><span data-i18n="sec_air">Air quality &amp; pollen</span></h2>
       <section id="air" class="air"></section>
 
+      <h2 class="section-title" id="waterTitle"><span data-i18n="sec_water">Sea &amp; rivers</span></h2>
+      <section id="water" class="details"></section>
+
       <h2 class="section-title"><span data-i18n="sec_hourly">Hourly forecast</span> <span class="title-sub" data-i18n="sec_hourly_sub">— next 48 hours</span></h2>
       <section class="card hourly-card">
         <div class="seg-toggle" id="hourlyToggle">
-          <button data-m="temp" class="active">Temperature</button>
-          <button data-m="rain">Precipitation</button>
-          <button data-m="wind">Wind gusts</button>
+          <button data-m="temp" class="active" data-i18n="seg_temp">Temperature</button>
+          <button data-m="rain" data-i18n="seg_rain">Precipitation</button>
+          <button data-m="wind" data-i18n="seg_wind">Wind gusts</button>
+          <button data-m="uv" data-i18n="seg_uv">UV &amp; sun</button>
         </div>
         <div class="chart-wrap" style="height:180px"><canvas id="hourlyChart" role="img" aria-label="Hourly forecast chart for the next 48 hours."></canvas></div>
         <div id="hourly" class="hourly"></div>
