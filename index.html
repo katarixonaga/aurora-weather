@@ -2,10 +2,10 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://cdnjs.cloudflare.com https://*.basemaps.cartocdn.com https://*.rainviewer.com; connect-src 'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://air-quality-api.open-meteo.com https://geocoding-api.open-meteo.com https://marine-api.open-meteo.com https://flood-api.open-meteo.com https://api.rainviewer.com https://services.swpc.noaa.gov https://en.wikipedia.org https://de.wikipedia.org https://history.muffinlabs.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://cdnjs.cloudflare.com https://*.tile.openstreetmap.org https://*.rainviewer.com; connect-src 'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://air-quality-api.open-meteo.com https://geocoding-api.open-meteo.com https://marine-api.open-meteo.com https://flood-api.open-meteo.com https://ensemble-api.open-meteo.com https://api.rainviewer.com https://services.swpc.noaa.gov https://api.brightsky.dev https://en.wikipedia.org https://de.wikipedia.org https://history.muffinlabs.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
 <meta name="color-scheme" content="dark light" />
-<meta name="theme-color" content="#0b1220" />
+<meta name="theme-color" content="#080B14" />
 <meta name="description" content="Aurora — live weather with extreme-weather alerts and 10-year historical context." />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="icon.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Inter+Tight:wght@200;300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" integrity="sha384-c6Rcwz4e4CITMbu/NBmnNS8yN2sC3cUElMEMfP3vqqKFp7GOYaaBBCqmaWBjmkjb" crossorigin="anonymous" referrerpolicy="no-referrer" />
 <link rel="stylesheet" href="styles.css" />
 </head>
@@ -24,19 +24,12 @@
   <div id="bgveil" class="bgveil"></div>
 
   <div class="app">
-    <div class="topstrip">
-      <div id="factBanner" class="factbanner"><span class="fact-ic" aria-hidden="true">💡</span><span id="factText" class="fact-text" data-i18n="fact_ph">On this day…</span></div>
-      <div id="clock" class="clock"></div>
-    </div>
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 32 32" width="26" height="26"><circle cx="16" cy="16" r="7" fill="#FDB813"/><g stroke="#FDB813" stroke-width="2.4" stroke-linecap="round"><line x1="16" y1="2" x2="16" y2="6"/><line x1="16" y1="26" x2="16" y2="30"/><line x1="2" y1="16" x2="6" y2="16"/><line x1="26" y1="16" x2="30" y2="16"/><line x1="6.3" y1="6.3" x2="9.1" y2="9.1"/><line x1="22.9" y1="22.9" x2="25.7" y2="25.7"/><line x1="6.3" y1="25.7" x2="9.1" y2="22.9"/><line x1="22.9" y1="9.1" x2="25.7" y2="6.3"/></g></svg>
+          <svg viewBox="0 0 32 32" width="30" height="30"><path d="M8 18c4-7 9-10 18-11" fill="none" stroke="#9b8cff" stroke-width="2" stroke-linecap="round" opacity="0.75"/><path d="M4 24c4-10 10-15 24-16" fill="none" stroke="#5EF2B0" stroke-width="2.4" stroke-linecap="round"/><path d="M4 28c5-8 11-12 24-12" fill="none" stroke="#4FA3FF" stroke-width="2.4" stroke-linecap="round" opacity="0.9"/></svg>
         </div>
-        <div class="brand-text">
-          <div class="brand-name">Aurora</div>
-          <div class="brand-sub" data-i18n="brand_sub">live weather &amp; climate</div>
-        </div>
+        <div class="brand-text"><div class="brand-name">Aurora</div></div>
       </div>
 
       <div class="search">
@@ -49,77 +42,96 @@
         <button id="geoBtn" class="icon-btn" data-i18n-title="title_geo" title="Use my location" aria-label="Use my location">
           <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg>
         </button>
-        <button id="bellBtn" class="icon-btn" title="Enable extreme-weather alerts" aria-label="Enable extreme-weather alerts">
-          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.7 21a2 2 0 0 1-3.4 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        </button>
-        <button id="langBtn" class="icon-btn text-btn" data-i18n-title="title_lang" title="Switch language" aria-label="Switch language">DE</button>
-        <button id="unitBtn" class="icon-btn text-btn" data-i18n-title="title_units" title="Switch units" aria-label="Switch temperature units">°C</button>
-        <button id="themeBtn" class="icon-btn" data-i18n-title="title_theme" title="Switch theme" aria-label="Switch theme">
-          <svg id="themeIcon" viewBox="0 0 24 24" width="18" height="18"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" fill="currentColor"/></svg>
-        </button>
         <button id="refreshBtn" class="icon-btn" data-i18n-title="title_refresh" title="Refresh now" aria-label="Refresh">
           <svg viewBox="0 0 24 24" width="18" height="18"><path d="M20 11a8 8 0 1 0-.6 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button id="settingsBtn" class="icon-btn" data-i18n-title="title_settings" title="Settings" aria-label="Settings" aria-haspopup="dialog" aria-expanded="false">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5a7.5 7.5 0 0 0-2.6 1.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.5 7.5 0 0 0 2.6-1.5l2.4 1 2-3.4z"/></svg>
         </button>
       </div>
     </header>
 
+    <nav class="tabbar" id="tabbar" role="tablist" aria-label="Sections">
+      <button role="tab" data-tab="today" aria-selected="true" class="active" id="tabbtn-today"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg><span data-i18n="tab_today">Today</span></button>
+      <button role="tab" data-tab="hours" aria-selected="false" id="tabbtn-hours"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span data-i18n="tab_hours">Hours</span></button>
+      <button role="tab" data-tab="days" aria-selected="false" id="tabbtn-days"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="4" y="5.5" width="16" height="14" rx="2.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg><span data-i18n="tab_days">14 days</span></button>
+      <button role="tab" data-tab="map" aria-selected="false" id="tabbtn-map"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5 4 7v12l5-2 6 2 5-2V5l-5 2-6-2z"/><path d="M9 5v12M15 7v12"/></svg><span data-i18n="tab_map">Map</span></button>
+      <button role="tab" data-tab="climate" aria-selected="false" id="tabbtn-climate"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19h16"/><path d="M6 15l4-4 3 3 5-6"/></svg><span data-i18n="tab_climate">Climate</span></button>
+    </nav>
+
     <main id="main" class="main">
-      <section id="faves" class="faves"></section>
-      <section id="alerts" class="alerts" aria-live="polite"></section>
-      <section id="hero" class="hero card"></section>
-      <div id="staleBadge" class="stale-badge" hidden></div>
-      <div id="nowcast" class="nowcast card"></div>
-      <section id="details" class="details"></section>
+      <section class="tab active" id="tab-today" role="tabpanel" aria-labelledby="tabbtn-today" tabindex="0">
+        <section id="faves" class="faves"></section>
+        <section id="dwd" class="dwd" aria-live="polite"></section>
+        <section id="alerts" class="alerts" aria-live="polite"></section>
+        <section id="hero" class="hero card"></section>
+        <div id="staleBadge" class="stale-badge" hidden></div>
+        <section id="briefing" class="briefing card"></section>
+        <section id="bestout" class="bestout card"></section>
+        <div id="nowcast" class="nowcast card"></div>
+        <section id="details" class="details"></section>
 
-      <h2 class="section-title" id="sunmoonTitle"><span data-i18n="sec_sunmoon">Sun &amp; Moon</span></h2>
-      <section id="sunmoon" class="details"></section>
+        <h2 class="section-title" id="sunmoonTitle"><span data-i18n="sec_sunmoon">Sun &amp; Moon</span></h2>
+        <section id="sunmoon" class="details"></section>
 
-      <h2 class="section-title" id="auroraTitle"><span data-i18n="sec_aurora">Aurora tonight</span></h2>
-      <section id="aurora" class="aurora"></section>
+        <h2 class="section-title" id="auroraTitle"><span data-i18n="sec_aurora">Aurora tonight</span></h2>
+        <section id="aurora" class="aurora"></section>
 
-      <h2 class="section-title"><span data-i18n="sec_air">Air quality &amp; pollen</span></h2>
-      <section id="air" class="air"></section>
+        <h2 class="section-title"><span data-i18n="sec_air">Air quality &amp; pollen</span></h2>
+        <section id="air" class="air"></section>
 
-      <h2 class="section-title" id="waterTitle"><span data-i18n="sec_water">Sea &amp; rivers</span></h2>
-      <section id="water" class="details"></section>
-
-      <h2 class="section-title"><span data-i18n="sec_hourly">Hourly forecast</span> <span class="title-sub" data-i18n="sec_hourly_sub">— next 48 hours</span></h2>
-      <section class="card hourly-card">
-        <div class="seg-toggle" id="hourlyToggle">
-          <button data-m="temp" class="active" data-i18n="seg_temp">Temperature</button>
-          <button data-m="rain" data-i18n="seg_rain">Precipitation</button>
-          <button data-m="wind" data-i18n="seg_wind">Wind gusts</button>
-          <button data-m="uv" data-i18n="seg_uv">UV &amp; sun</button>
-        </div>
-        <div class="chart-wrap" style="height:180px"><canvas id="hourlyChart" role="img" aria-label="Hourly forecast chart for the next 48 hours."></canvas></div>
-        <div id="hourly" class="hourly"></div>
+        <h2 class="section-title" id="waterTitle"><span data-i18n="sec_water">Sea &amp; rivers</span></h2>
+        <section id="water" class="details"></section>
       </section>
 
-      <h2 class="section-title"><span data-i18n="sec_radar">Storm &amp; extreme-weather radar</span> <span class="title-sub" data-i18n="sec_radar_sub">— live radar + forecast extremes</span></h2>
-      <section class="card radar-card">
-        <div class="radarbar">
-          <div class="seg-toggle" id="scopeToggle"><button data-scope="near" class="active" data-i18n="scope_near">Near me</button><button data-scope="country" data-i18n="scope_country">Country</button></div>
-          <div class="seg-toggle" id="radiusChips"><button data-r="25">25 km</button><button data-r="50" class="active">50 km</button><button data-r="100">100 km</button></div>
-          <select id="countrySel" class="map-select" style="display:none" aria-label="Select country"></select>
-          <button id="radarToggle" class="icon-btn text-btn" style="width:auto;padding:0 14px" data-i18n="radar_label" data-i18n-title="title_radar" title="Toggle live precipitation radar">Radar</button>
-          <button id="radarPlay" class="icon-btn" data-i18n-title="title_radarplay" title="Play radar animation" style="display:none">▶</button>
-          <span id="radarTime" class="map-status" style="margin:0"></span>
+      <section class="tab" id="tab-hours" role="tabpanel" aria-labelledby="tabbtn-hours" tabindex="0" hidden>
+        <div class="tab-head">
+          <h2 class="tab-title" data-i18n="sec_hours">Next 48 hours</h2>
+          <div class="seg-toggle" id="meteoRange">
+            <button data-h="24" data-i18n="rng_24">24 h</button>
+            <button data-h="48" class="active" data-i18n="rng_48">48 h</button>
+          </div>
         </div>
-        <div id="map"></div>
-        <div id="mapStatus" class="map-status" data-i18n="map_scroll">Scroll down to load the radar…</div>
-        <div id="mapLegend" class="map-legend"></div>
+        <section class="card meteo-card"><div id="meteogram" class="meteo"></div></section>
       </section>
 
-      <h2 class="section-title"><span data-i18n="sec_daily">14-day forecast</span> <span class="title-sub" data-i18n="sec_daily_sub">— tap a day for details</span></h2>
-      <section id="daily" class="daily card"></section>
+      <section class="tab" id="tab-days" role="tabpanel" aria-labelledby="tabbtn-days" tabindex="0" hidden>
+        <div class="tab-head">
+          <h2 class="tab-title" data-i18n="sec_daily">14-day forecast</h2>
+          <span class="range-chip" id="ensNote" hidden></span>
+        </div>
+        <section id="daily" class="daily card"></section>
+      </section>
 
-      <h2 class="section-title"><span data-i18n="sec_history">Learning from the past</span> <span class="title-sub" data-i18n="sec_history_sub">— this forecast vs. 10 years of local climate</span></h2>
-      <section id="history" class="history"></section>
+      <section class="tab" id="tab-map" role="tabpanel" aria-labelledby="tabbtn-map" tabindex="0" hidden>
+        <div class="tab-head"><h2 class="tab-title" data-i18n="sec_radar">Storm &amp; extreme-weather radar</h2></div>
+        <section class="card radar-card">
+          <div class="radarbar">
+            <div class="seg-toggle" id="scopeToggle"><button data-scope="near" class="active" data-i18n="scope_near">Near me</button><button data-scope="country" data-i18n="scope_country">Country</button></div>
+            <div class="seg-toggle" id="radiusChips"><button data-r="25">25 km</button><button data-r="50" class="active">50 km</button><button data-r="100">100 km</button></div>
+            <select id="countrySel" class="map-select" style="display:none" aria-label="Select country"></select>
+            <button id="radarToggle" class="icon-btn text-btn" style="width:auto;padding:0 14px" data-i18n="radar_label" data-i18n-title="title_radar" title="Toggle live precipitation radar">Radar</button>
+            <button id="radarPlay" class="icon-btn" data-i18n-title="title_radarplay" title="Play radar animation" style="display:none">▶</button>
+            <span id="radarTime" class="map-status" style="margin:0"></span>
+          </div>
+          <div id="map"></div>
+          <div id="mapStatus" class="map-status" data-i18n="map_scroll">Loading the radar…</div>
+          <div id="mapLegend" class="map-legend"></div>
+        </section>
+      </section>
 
-      <h2 class="section-title"><span data-i18n="sec_climate">Climate history</span> <span class="title-sub" data-i18n="sec_climate_sub">— 40 years of warming for this place</span></h2>
-      <section class="card stripes-card">
-        <div id="stripes"></div>
-        <div id="onthisday" class="stripes-otd"></div>
+      <section class="tab" id="tab-climate" role="tabpanel" aria-labelledby="tabbtn-climate" tabindex="0" hidden>
+        <div class="topstrip">
+          <div id="factBanner" class="factbanner"><span class="fact-ic" aria-hidden="true">💡</span><span id="factText" class="fact-text" data-i18n="fact_ph">On this day…</span></div>
+        </div>
+        <h2 class="section-title"><span data-i18n="sec_history">Learning from the past</span> <span class="title-sub" data-i18n="sec_history_sub">— this forecast vs. 10 years of local climate</span></h2>
+        <section id="history" class="history"></section>
+
+        <h2 class="section-title"><span data-i18n="sec_climate">Climate history</span> <span class="title-sub" data-i18n="sec_climate_sub">— 40 years of warming for this place</span></h2>
+        <section class="card stripes-card">
+          <div id="stripes"></div>
+          <div id="onthisday" class="stripes-otd"></div>
+        </section>
       </section>
     </main>
 
@@ -129,7 +141,17 @@
     </footer>
   </div>
 
-  <div id="loading" class="loading"><div class="spinner"></div><div class="loading-text" data-i18n="loading">Reading the sky…</div></div>
+  <div id="settingsSheet" class="sheet" hidden>
+    <div class="sheet-backdrop" id="sheetBackdrop"></div>
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="Settings">
+      <div class="sheet-head"><span class="sheet-title" data-i18n="settings">Settings</span><button id="sheetClose" class="icon-btn" aria-label="Close settings"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+      <div class="sheet-row"><span class="sheet-lbl" data-i18n="set_units">Units</span><div class="seg-toggle" id="unitSeg"><button data-u="c">°C</button><button data-u="f">°F</button></div></div>
+      <div class="sheet-row"><span class="sheet-lbl" data-i18n="set_lang">Language</span><div class="seg-toggle" id="langSeg"><button data-l="en">English</button><button data-l="de">Deutsch</button></div></div>
+      <div class="sheet-row"><span class="sheet-lbl" data-i18n="set_theme">Theme</span><div class="seg-toggle" id="themeSeg"><button data-t="dark" data-i18n="theme_dark">Dark</button><button data-t="light" data-i18n="theme_light">Light</button></div></div>
+      <div class="sheet-row"><span class="sheet-lbl" data-i18n="set_alerts">Extreme-weather alerts</span><button id="bellBtn" class="pillbtn" data-i18n="alerts_enable">Enable</button></div>
+    </div>
+  </div>
+
   <div id="toast" class="toast"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" referrerpolicy="no-referrer"></script>

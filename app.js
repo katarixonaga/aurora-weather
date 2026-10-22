@@ -22,6 +22,7 @@
   let state = {
     loc: loadLoc(), units: localStorage.getItem(LS.units) || 'c', lang: localStorage.getItem('aurora.lang') || ((navigator.language || 'en').toLowerCase().indexOf('de') === 0 ? 'de' : 'en'),
     forecast: null, air: null, aurora: null, water: null, clim: null, analysis: null, stormByDay: {}, stormByDate: {}, nowcast: null, longData: null, stripesLoc: null,
+    ens: null, dwd: null, meteoH: 48, tab: 'today',
     alerts: [], hourlyMetric: 'temp', faves: loadFaves(), timer: null, lastGood: null,
     map: { inited: false, leaflet: null, baseLayer: null, radarLayer: null, markers: [], center: null, circle: null, scope: 'near', radius: 50, country: 'DE', radarOn: false, frames: [], radarHost: '', radarIdx: 0, radarTimer: null }
   };
@@ -173,7 +174,7 @@
     const p = new URLSearchParams({
       latitude: loc.lat, longitude: loc.lon,
       current: 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index',
-      hourly: 'temperature_2m,precipitation_probability,precipitation,weather_code,wind_gusts_10m,is_day,cape,convective_inhibition,wind_speed_10m,wind_direction_10m,wind_speed_500hPa,wind_direction_500hPa,uv_index,shortwave_radiation,dew_point_2m,visibility',
+      hourly: 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_gusts_10m,is_day,cape,convective_inhibition,wind_speed_10m,wind_direction_10m,wind_speed_500hPa,wind_direction_500hPa,uv_index,shortwave_radiation,dew_point_2m,visibility',
       daily: 'weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_gusts_10m_max,snowfall_sum',
       timezone: 'auto', forecast_days: 16, wind_speed_unit: 'kmh'
     });
@@ -204,6 +205,30 @@
     if (m.status === 'fulfilled' && m.value && m.value.current) { const wv = m.value.current.wave_height; if (wv != null && wv > 0) { out.wave = wv; out.wavePeriod = m.value.current.wave_period; } }
     if (f.status === 'fulfilled' && f.value && f.value.daily && f.value.daily.river_discharge) { const arr = f.value.daily.river_discharge.filter(x => x != null); if (arr.length >= 10) { const cur = arr[arr.length - 1]; out.river = cur; out.riverPct = Math.round(pctl(arr, cur)); } }
     return out;
+  }
+  async function getDwd(loc) {
+    try {
+      const r = await fetch('https://api.brightsky.dev/alerts?' + new URLSearchParams({ lat: loc.lat, lon: loc.lon }));
+      if (!r.ok) return { covered: false };
+      const d = await r.json();
+      return { covered: true, alerts: (d.alerts || []), place: d.location || null };
+    } catch (e) { return null; }
+  }
+  function ensPct(a, p) { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); const i = (s.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i); return s[lo] + (s[hi] - s[lo]) * (i - lo); }
+  async function getEnsemble(loc) {
+    try {
+      const r = await fetch('https://ensemble-api.open-meteo.com/v1/ensemble?' + new URLSearchParams({ latitude: loc.lat, longitude: loc.lon, timezone: 'auto', forecast_days: 14, daily: 'temperature_2m_max,temperature_2m_min,precipitation_sum', models: 'icon_seamless,ecmwf_ifs025,gfs_seamless' }));
+      if (!r.ok) return null;
+      const d = await r.json(); if (!d.daily || !d.daily.time) return null;
+      const ks = pfx => Object.keys(d.daily).filter(x => x.indexOf(pfx) === 0), hk = ks('temperature_2m_max'), lk = ks('temperature_2m_min'), pk = ks('precipitation_sum');
+      const by = {};
+      d.daily.time.forEach((t, i) => {
+        const hv = hk.map(k => d.daily[k][i]).filter(v => v != null), lv = lk.map(k => d.daily[k][i]).filter(v => v != null), pv = pk.map(k => d.daily[k][i]).filter(v => v != null);
+        if (hv.length < 6) return;
+        by[t] = { hi10: ensPct(hv, .1), hi50: ensPct(hv, .5), hi90: ensPct(hv, .9), lo10: ensPct(lv, .1), lo50: ensPct(lv, .5), lo90: ensPct(lv, .9), wet: Math.round(100 * pv.filter(v => v >= 1).length / (pv.length || 1)), n: hv.length };
+      });
+      return { by, members: hk.length };
+    } catch (e) { return null; }
   }
   async function getArchive(loc) {
     const key = LS.arch(loc.lat, loc.lon);
@@ -414,58 +439,189 @@
       metric(tr('golden_hour'), goldenStr, blueStr !== '–' ? tr('blue_hour') + ' ' + blueStr : '') +
       metric(tr('moon_phase'), MOON_EMOJI[idx] + ' ' + tr(MOON_KEYS[idx]), tr('moon_illum', { pct: Math.round(mp.illum * 100) }));
   }
-  function renderHourly(fc) {
-    const h = fc.hourly, now = fc.current.time; let s = 0; for (let i = 0; i < h.time.length; i++) if (h.time[i] >= now) { s = i; break; }
-    let html = '';
-    for (let i = s; i < s + 24 && i < h.time.length; i++) {
-      const hr = +h.time[i].slice(11, 13), lbl = i === s ? tr('now') : hr + ':00', pop = h.precipitation_probability[i];
-      html += `<div class="hour ${i === s ? 'now' : ''}"><div class="h-t">${lbl}</div><div class="h-ic">${icon(dispCode(h.weather_code[i], h.temperature_2m[i]), h.is_day[i] === 1, false)}</div><div class="h-temp">${fmtT(h.temperature_2m[i])}</div><div class="h-pop">${pop >= 20 ? rainGlyph() + ' ' + pop + '%' : ''}</div></div>`;
-    }
-    $('#hourly').innerHTML = `<div class="hourly-row">${html}</div>`;
+  function shieldSvg() { return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5.5c0 4.4-3 8-7 9.5-4-1.5-7-5.1-7-9.5V6z"/><path d="M8.8 12.2l2.2 2.2 4.2-4.4"/></svg>'; }
+  function warnTri() { return '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17v.5"/></svg>'; }
+  function clockSvg() { return '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#AEBBD0" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'; }
+  function walkSvg() { return '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13" cy="4" r="1.6"/><path d="M11 8l-3 4 3 2 1 6M12 14l3 3 2 2M8 12l-2 2"/></svg>'; }
+
+  /* ---------------- today briefing + best time outside ---------------- */
+  function hourFromNow(h, now) { let s = 0; for (let i = 0; i < h.time.length; i++) if (h.time[i] >= now) { s = i; break; } return s; }
+  function renderBriefing(fc) {
+    const el = $('#briefing'); if (!el) return;
+    if (!fc || !fc.hourly) { el.classList.add('skel'); el.innerHTML = ''; return; }
+    el.classList.remove('skel'); el.style.display = '';
+    const h = fc.hourly, c = fc.current, s = hourFromNow(h, c.time);
+    const nxt = n => { const a = []; for (let i = s; i < s + n && i < h.time.length; i++) a.push(i); return a; };
+    const hr = +c.time.slice(11, 13), dp = hr < 12 ? 'morning' : hr < 17 ? 'afternoon' : hr < 21 ? 'evening' : 'night';
+    const cat = codeCat(dispCode(c.weather_code, c.temperature_2m));
+    const skyKey = (cat === 'rain' || cat === 'drizzle' || cat === 'storm' || cat === 'sleet') ? 'brief_sky_wet' : cat === 'clear' ? 'brief_sky_clear' : cat === 'partly' ? 'brief_sky_part' : 'brief_sky_grey';
+    let s1 = tr(skyKey, { part: tr('dp_' + dp) });
+    const gmax = Math.max(0, ...nxt(6).map(i => h.wind_gusts_10m[i] || 0));
+    if (gmax >= 25) s1 += ', ' + tr('brief_wind', { g: fmtW(Math.round(gmax)) });
+    s1 += '.';
+    let rain = null;
+    for (const i of nxt(12)) { if ((h.precipitation_probability[i] || 0) >= 45 || (h.precipitation[i] || 0) >= 0.3) { rain = { i, pop: h.precipitation_probability[i] || 0, heavy: (h.precipitation[i] || 0) >= 1 }; break; } }
+    const s2 = rain ? (rain.pop >= 60 || rain.heavy ? tr('brief_rain_likely', { t: hhmm(h.time[rain.i]) }) : tr('brief_rain_shower', { t: hhmm(h.time[rain.i]) })) + '.' : tr('brief_norain') + '.';
+    const tlo = Math.min(...nxt(18).map(i => h.temperature_2m[i]));
+    const s3 = tr('brief_tonight', { lo: fmtT(tlo) }) + '.';
+    el.innerHTML = `<div class="brief-lbl">${sunSmall()}${esc(tr('brief_lbl'))}</div><p class="brief-text">${esc(s1 + ' ' + s2 + ' ' + s3)}</p>`;
   }
-  let hourlyChart = null;
-  function renderHourlyChart() {
-    const fc = state.forecast; if (!fc || !window.Chart || !$('#hourlyChart')) return;
-    const m = state.hourlyMetric, h = fc.hourly, now = fc.current.time; let s = 0; for (let i = 0; i < h.time.length; i++) if (h.time[i] >= now) { s = i; break; }
-    const idx = []; for (let i = s; i < s + 48 && i < h.time.length; i++) idx.push(i);
-    const dark = document.documentElement.getAttribute('data-theme') !== 'light', grid = dark ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.07)', tick = dark ? 'rgba(235,240,250,.65)' : 'rgba(20,30,50,.6)';
-    const labels = idx.map((i, j) => { const d = new Date(h.time[i]), hr = d.getHours(); return j === 0 ? tr('now') : hr === 0 ? mdShort(h.time[i].slice(0, 10)) : (hr < 10 ? '0' + hr : hr); });
-    let type = 'line', ds, yfmt;
-    if (m === 'temp') { ds = { data: idx.map(i => round(convT(h.temperature_2m[i]), 1)), borderColor: '#ff7a45', borderWidth: 2.4, tension: .4, pointRadius: 0, fill: true, backgroundColor: dark ? 'rgba(255,122,69,.14)' : 'rgba(255,122,69,.10)' }; yfmt = v => Math.round(v) + '°'; }
-    else if (m === 'rain') { type = 'bar'; ds = { data: idx.map(i => round(convP(h.precipitation[i]), 2)), backgroundColor: '#4ea6e8', borderRadius: 3, maxBarThickness: 9 }; yfmt = v => v; }
-    else if (m === 'uv') { type = 'bar'; ds = { data: idx.map(i => { const day = h.is_day ? h.is_day[i] : 1, uv = h.uv_index ? h.uv_index[i] : null; return (day && uv != null) ? round(uv, 1) : 0; }), backgroundColor: idx.map(i => { const day = h.is_day ? h.is_day[i] : 1, uv = (day && h.uv_index) ? h.uv_index[i] : 0; return uv >= 8 ? '#e23b3b' : uv >= 6 ? '#ff7a45' : uv >= 3 ? '#ffce3a' : '#7bd88f'; }), borderRadius: 3, maxBarThickness: 9 }; yfmt = v => v; }
-    else { ds = { data: idx.map(i => Math.round(convW(h.wind_gusts_10m[i]))), borderColor: '#9fb0c4', borderWidth: 2, tension: .4, pointRadius: 0, fill: true, backgroundColor: dark ? 'rgba(159,176,196,.12)' : 'rgba(120,140,170,.10)' }; yfmt = v => Math.round(v); }
-    if (hourlyChart) hourlyChart.destroy();
-    hourlyChart = new Chart($('#hourlyChart'), {
-      type, data: { labels, datasets: [Object.assign({ label: m }, ds)] },
-      options: {
-        responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-        plugins: { legend: { display: false }, tooltip: { callbacks: { title: items => { const i = idx[items[0].dataIndex]; const d = new Date(h.time[i]); return d.toLocaleDateString(LOCALE(), { weekday: 'short' }) + ' ' + (d.getHours() < 10 ? '0' : '') + d.getHours() + ':00'; }, label: c => { const v = c.parsed.y, i = idx[c.dataIndex], pop = h.precipitation_probability[i]; return m === 'temp' ? Math.round(v) + (state.units === 'f' ? '°F' : '°C') : m === 'rain' ? round(v, 1) + ' ' + precU() + (pop != null ? '  ·  ' + pop + '%' : '') : m === 'uv' ? round(v, 1) + ' ' + tr('uv') + ' · ' + uvWord(v) : Math.round(v) + ' ' + windU() + ' ' + tr('gusts'); } } } },
-        scales: { y: { grid: { color: grid }, ticks: { color: tick, callback: yfmt }, beginAtZero: m !== 'temp' }, x: { grid: { display: false }, ticks: { color: tick, maxRotation: 0, autoSkip: true, maxTicksLimit: 12 } } }
-      }
-    });
+  function outdoorScore(h, i) {
+    const day = h.is_day ? h.is_day[i] : 1; if (!day) return 0;
+    const A = h.apparent_temperature ? h.apparent_temperature[i] : h.temperature_2m[i], pop = h.precipitation_probability[i] || 0, mm = h.precipitation[i] || 0, g = h.wind_gusts_10m[i] || 0, uv = h.uv_index ? h.uv_index[i] : 0;
+    let sc = 100; sc -= pop * 0.8; sc -= mm * 15; sc -= Math.max(0, g - 30) * 1.5; sc -= Math.max(0, 12 - A) * 3; sc -= Math.max(0, A - 27) * 3; sc -= Math.max(0, uv - 6) * 5;
+    return Math.max(0, Math.round(sc));
+  }
+  function renderBestOutside(fc) {
+    const el = $('#bestout'); if (!el) return;
+    if (!fc || !fc.hourly) { el.classList.add('skel'); el.innerHTML = ''; return; }
+    el.classList.remove('skel'); el.style.display = '';
+    const h = fc.hourly, s = hourFromNow(h, fc.current.time), span = [];
+    for (let i = s; i < s + 24 && i < h.time.length; i++) span.push(i);
+    const sc = span.map(i => outdoorScore(h, i));
+    let best = null, run = null;
+    span.forEach((i, j) => { if (sc[j] >= 55) { run = run ? { a: run.a, b: j, sum: run.sum + sc[j] } : { a: j, b: j, sum: sc[j] }; } else { if (run && (!best || run.sum > best.sum)) best = run; run = null; } });
+    if (run && (!best || run.sum > best.sum)) best = run;
+    let whenStr, sub;
+    if (best) { const aFull = h.time[span[best.a]], endT = h.time[span[best.b] + 1] || h.time[span[best.b]], tom = aFull.slice(0, 10) !== h.time[span[0]].slice(0, 10); whenStr = tom ? tr('bo_tom', { a: hhmm(aFull), b: hhmm(endT) }) : best.a === 0 ? tr('bo_now', { t: hhmm(endT) }) : tr('bo_window', { a: hhmm(aFull), b: hhmm(endT) }); const avgG = mean(span.slice(best.a, best.b + 1).map(i => h.wind_gusts_10m[i])); sub = tr('bo_sub', { g: fmtW(avgG == null ? null : Math.round(avgG)) }); }
+    else { whenStr = tr('bo_none'); sub = tr('bo_none_sub'); }
+    const bars = span.map((i, j) => { const day = h.is_day ? h.is_day[i] : 1; let col = '#182033'; if (day) { const v = sc[j]; col = v >= 75 ? '#4FA3FF' : v >= 50 ? 'rgba(79,163,255,.72)' : v >= 25 ? 'rgba(79,163,255,.45)' : 'rgba(120,140,170,.32)'; } return `<span style="background:${col}" title="${esc(hhmm(h.time[i]))} · ${sc[j]}"></span>`; }).join('');
+    el.innerHTML = `<div class="brief-lbl">${walkSvg()}${esc(tr('bo_lbl'))}</div><div class="bo-when">${esc(whenStr)}</div><div class="bo-sub">${esc(sub)}</div><div class="bo-bars">${bars}</div><div class="bo-ticks"><span>${esc(hhmm(h.time[span[0]]))}</span><span>+24 h</span></div>`;
+  }
+
+  /* ---------------- official warnings (DWD) ---------------- */
+  function dwdLevel(sev) { return sev === 'extreme' ? 4 : sev === 'severe' ? 3 : sev === 'moderate' ? 2 : 1; }
+  function renderDwd() {
+    const el = $('#dwd'); if (!el) return; const d = state.dwd;
+    if (!d || !d.covered) { el.innerHTML = ''; return; }
+    const now = Date.now();
+    const active = (d.alerts || []).filter(a => (a.expires ? Date.parse(a.expires) : Infinity) > now);
+    if (!active.length) {
+      const name = d.place ? (d.place.name || d.place.name_short || '') : '';
+      el.innerHTML = `<div class="dwd-ok"><span class="di">${shieldSvg()}</span><div><b>${esc(tr('dwd_none', { name }))}</b><div class="dsub">${esc(tr('dwd_checked'))}</div></div><span class="dwd-src">DWD</span></div>`;
+      return;
+    }
+    active.sort((a, b) => dwdLevel(b.severity) - dwdLevel(a.severity));
+    el.innerHTML = active.map(a => {
+      const lv = dwdLevel(a.severity);
+      let title = (state.lang === 'de' ? a.event_de : a.event_en) || a.event_en || a.headline_en || '';
+      title = esc(title.charAt(0).toUpperCase() + title.slice(1).toLowerCase());
+      const desc = esc((((state.lang === 'de' ? a.description_de : a.description_en) || '').split('\n')[0] || '').slice(0, 160));
+      const when = (a.onset && a.expires) ? esc(hhmm(a.onset) + ' – ' + hhmm(a.expires)) : '';
+      return `<div class="warn lv${lv}"><div class="warn-top"><span class="warn-sev">${warnTri()}${esc(tr('dwd_level', { n: lv }))}</span><span class="dwd-src">${esc(tr('dwd_official'))}</span></div><div class="warn-title">${title}</div>${when ? `<div class="warn-when">${clockSvg()}${when}</div>` : ''}<div class="warn-desc">${desc}</div></div>`;
+    }).join('');
+  }
+
+  /* ---------------- meteogram ---------------- */
+  function renderMeteogram() {
+    const el = $('#meteogram'), fc = state.forecast; if (!el) return;
+    if (!fc || !fc.hourly) { el.innerHTML = '<div class="skel-box" style="height:360px"></div>'; return; }
+    const N = state.meteoH, h = fc.hourly, s = hourFromNow(h, fc.current.time), idx = [];
+    for (let i = s; i < s + N && i < h.time.length; i++) idx.push(i);
+    if (idx.length < 2) { el.innerHTML = ''; return; }
+    const dark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const ink = dark ? '#AEBBD0' : '#3B4B63', faint = dark ? '#7E8CA6' : '#5A6B84';
+    const padL = 46, padR = 16, cw = el.clientWidth || 980, minStep = N > 30 ? 17 : 26, Ht = 416;
+    const step = Math.max(minStep, Math.floor((cw - padL - padR) / (idx.length - 1))), W = padL + padR + (idx.length - 1) * step;
+    const X = j => +(padL + j * step).toFixed(1);
+    const T = idx.map(i => h.temperature_2m[i]), A = idx.map(i => { const a = h.apparent_temperature ? h.apparent_temperature[i] : null, sv = saneFeel(a, h.temperature_2m[i]); return sv == null ? h.temperature_2m[i] : sv; });
+    const tLo = Math.floor(Math.min(...T, ...A) - 1), tHi = Math.ceil(Math.max(...T, ...A) + 1), tTop = 82, tBot = 224;
+    const tY = v => +(tBot - (v - tLo) / Math.max(1, tHi - tLo) * (tBot - tTop)).toFixed(1);
+    const gust = idx.map(i => h.wind_gusts_10m[i] || 0), gHi = Math.max(20, Math.ceil(Math.max(...gust) / 10) * 10), gTop = 292, gBot = 350, gY = v => +(gBot - v / gHi * (gBot - gTop)).toFixed(1);
+    const P = [];
+    // night shading + day dividers
+    for (let j = 0; j < idx.length; j++) {
+      const i = idx[j], day = h.is_day ? h.is_day[i] : 1, hr = +h.time[i].slice(11, 13);
+      if (!day) P.push(`<rect x="${(X(j) - step / 2).toFixed(1)}" y="64" width="${step}" height="322" fill="#05080f" opacity="${dark ? .5 : .13}"/>`);
+      if (hr === 0 || j === 0) { P.push(`<line x1="${X(j)}" y1="64" x2="${X(j)}" y2="386" stroke="rgba(150,160,180,.14)"/>`); P.push(`<text x="${X(j) + 5}" y="60" font-family="Inter,sans-serif" font-size="11" font-weight="600" fill="${ink}">${esc((j === 0 ? tr('now') + ' · ' : '') + shortWD(h.time[i].slice(0, 10)))}</text>`); }
+    }
+    // icons every 3h
+    for (let j = 0; j < idx.length; j += 3) { const i = idx[j], day = h.is_day ? h.is_day[i] : 1; P.push(`<svg x="${(X(j) - 11).toFixed(1)}" y="20" width="22" height="22" overflow="visible">${icon(dispCode(h.weather_code[i], T[j]), day === 1, false)}</svg>`); }
+    // temp gridlines
+    const tstep = (tHi - tLo) > 18 ? 10 : 5;
+    for (let v = Math.ceil(tLo / tstep) * tstep; v <= tHi; v += tstep) { P.push(`<line x1="${padL}" y1="${tY(v)}" x2="${W - padR}" y2="${tY(v)}" stroke="rgba(150,160,180,.08)"/>`); P.push(`<text x="${padL - 8}" y="${tY(v) + 4}" text-anchor="end" font-family="var(--mono),monospace" font-size="11" fill="${faint}">${Math.round(convT(v))}°</text>`); }
+    const tempPath = T.map((v, j) => (j ? 'L' : 'M') + X(j) + ' ' + tY(v)).join(' ');
+    P.push(`<path d="${tempPath} L${X(idx.length - 1)} ${tBot} L${padL} ${tBot} Z" fill="url(#mgTemp)"/>`);
+    P.push(`<path d="${A.map((v, j) => (j ? 'L' : 'M') + X(j) + ' ' + tY(v)).join(' ')}" fill="none" stroke="#e8693a" stroke-width="1.5" stroke-dasharray="4 4" opacity=".7"/>`);
+    P.push(`<path d="${tempPath}" fill="none" stroke="#e8693a" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`);
+    // min/max markers
+    const jHi = T.indexOf(Math.max(...T)), jLo = T.indexOf(Math.min(...T));
+    [[jHi, Math.max(...T)], [jLo, Math.min(...T)]].forEach(([j, v]) => { P.push(`<circle cx="${X(j)}" cy="${tY(v)}" r="3.5" fill="#e8693a" stroke="${dark ? '#0E1524' : '#fff'}" stroke-width="2"/>`); P.push(`<text x="${X(j)}" y="${tY(v) + (j === jHi ? -9 : 16)}" text-anchor="middle" font-family="var(--mono),monospace" font-size="11.5" font-weight="600" fill="${dark ? '#E9EFFA' : '#0B1524'}">${fmtT(v)}</text>`); });
+    P.push(`<line x1="${padL}" y1="68" x2="${padL}" y2="${tBot}" stroke="${dark ? '#E9EFFA' : '#0B1524'}" stroke-opacity=".4"/><circle cx="${padL}" cy="${tY(T[0])}" r="4.5" fill="${dark ? '#E9EFFA' : '#0B1524'}" stroke="${dark ? '#0E1524' : '#fff'}" stroke-width="2"/>`);
+    // rain % strip
+    P.push(`<text x="4" y="263" font-family="Inter,sans-serif" font-size="10" font-weight="600" fill="${faint}">${esc(tr('mg_rain'))}</text>`);
+    P.push(`<rect x="${padL}" y="246" width="${W - padR - padL}" height="22" rx="4" fill="rgba(150,160,180,.05)"/>`);
+    idx.forEach((i, j) => { const pop = h.precipitation_probability[i]; if (pop != null && pop >= 10) { P.push(`<rect x="${(X(j) - step / 2 + 1).toFixed(1)}" y="246" width="${(step - 2).toFixed(1)}" height="22" rx="3" fill="#3f8fd4" opacity="${(0.18 + pop / 100 * 0.78).toFixed(2)}"/>`); if (pop >= 40) P.push(`<text x="${X(j)}" y="261" text-anchor="middle" font-family="var(--mono),monospace" font-size="10" font-weight="600" fill="#F6F9FE">${pop}</text>`); } });
+    // gust
+    P.push(`<text x="4" y="326" font-family="Inter,sans-serif" font-size="10" font-weight="600" fill="${faint}">${esc(tr('mg_gust'))}</text>`);
+    [20, 40].forEach(v => { if (v <= gHi) { P.push(`<line x1="${padL}" y1="${gY(v)}" x2="${W - padR}" y2="${gY(v)}" stroke="rgba(150,160,180,.08)"/>`); P.push(`<text x="${padL - 8}" y="${gY(v) + 3}" text-anchor="end" font-family="var(--mono),monospace" font-size="10" fill="${faint}">${Math.round(convW(v))}</text>`); } });
+    const gPath = gust.map((v, j) => (j ? 'L' : 'M') + X(j) + ' ' + gY(v)).join(' ');
+    P.push(`<path d="${gPath} L${X(idx.length - 1)} ${gBot} L${padL} ${gBot} Z" fill="url(#mgGust)"/>`);
+    P.push(`<path d="${gPath}" fill="none" stroke="#9fb0c4" stroke-width="2" stroke-linejoin="round"/>`);
+    const jg = gust.indexOf(Math.max(...gust)); P.push(`<circle cx="${X(jg)}" cy="${gY(gust[jg])}" r="3.5" fill="#9fb0c4" stroke="${dark ? '#0E1524' : '#fff'}" stroke-width="2"/><text x="${X(jg)}" y="${gY(gust[jg]) - 8}" text-anchor="middle" font-family="var(--mono),monospace" font-size="11" font-weight="600" fill="${dark ? '#E9EFFA' : '#0B1524'}">${fmtW(gust[jg])}</text>`);
+    // UV strip
+    P.push(`<text x="4" y="378" font-family="Inter,sans-serif" font-size="10" font-weight="600" fill="${faint}">${esc(tr('mg_uv'))}</text>`);
+    idx.forEach((i, j) => { const day = h.is_day ? h.is_day[i] : 1, uv = (day && h.uv_index) ? h.uv_index[i] : 0; if (uv > 0.2) { const col = uv >= 8 ? '#e23b3b' : uv >= 6 ? '#ff7a45' : uv >= 3 ? '#ffce3a' : '#7bd88f'; P.push(`<rect x="${(X(j) - step / 2 + 1).toFixed(1)}" y="366" width="${(step - 2).toFixed(1)}" height="16" rx="3" fill="${col}" opacity="${Math.min(1, 0.25 + uv / 11).toFixed(2)}"/>`); } });
+    // hour axis
+    for (let j = 0; j < idx.length; j += (N > 30 ? 3 : 2)) { const hr = +h.time[idx[j]].slice(11, 13); P.push(`<text x="${X(j)}" y="402" text-anchor="middle" font-family="var(--mono),monospace" font-size="10" fill="${faint}">${hr < 10 ? '0' + hr : hr}</text>`); }
+    // crosshair group (moved by JS)
+    P.push(`<g class="mg-cross" style="visibility:hidden"><line y1="64" y2="386" stroke="${dark ? '#E9EFFA' : '#0B1524'}" stroke-opacity=".55" stroke-width="1.2"/><circle class="cT" r="4" fill="#e8693a" stroke="${dark ? '#0E1524' : '#fff'}" stroke-width="2"/><circle class="cG" r="4" fill="#9fb0c4" stroke="${dark ? '#0E1524' : '#fff'}" stroke-width="2"/></g>`);
+    P.push(`<rect class="mg-hit" x="${padL}" y="64" width="${W - padR - padL}" height="322" fill="transparent" style="cursor:crosshair"/>`);
+    const grad = `<defs><linearGradient id="mgTemp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8693a" stop-opacity=".24"/><stop offset="1" stop-color="#e8693a" stop-opacity="0"/></linearGradient><linearGradient id="mgGust" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9fb0c4" stop-opacity=".16"/><stop offset="1" stop-color="#9fb0c4" stop-opacity="0"/></linearGradient></defs>`;
+    el.innerHTML =
+      `<div class="meteo-legend"><span><i style="width:18px;border-top:2px solid #e8693a"></i>${esc(tr('mg_temp'))}</span><span><i style="width:18px;border-top:2px dashed #e8693a;opacity:.7"></i>${esc(tr('mg_feels'))}</span><span><i style="width:12px;height:12px;border-radius:3px;background:#3f8fd4;display:inline-block"></i>${esc(tr('mg_rain'))}</span><span><i style="width:18px;border-top:2px solid #9fb0c4"></i>${esc(tr('mg_gust'))}</span></div>` +
+      `<div class="mg-wrap" style="position:relative"><svg style="width:${W}px" viewBox="0 0 ${W} ${Ht}" role="img" aria-label="${esc(tr('mg_aria'))}" preserveAspectRatio="xMidYMid meet">${grad}${P.join('')}</svg><div class="meteo-tip" hidden></div></div>`;
+    // hover
+    const svg = el.querySelector('svg'), cross = el.querySelector('.mg-cross'), hit = el.querySelector('.mg-hit'), tip = el.querySelector('.meteo-tip');
+    if (svg && hit && cross && tip) {
+      const move = ev => {
+        const r = svg.getBoundingClientRect(), sx = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left, ux = sx / r.width * W;
+        let j = Math.round((ux - padL) / step); j = Math.max(0, Math.min(idx.length - 1, j));
+        cross.style.visibility = 'visible'; cross.querySelector('line').setAttribute('x1', X(j)); cross.querySelector('line').setAttribute('x2', X(j));
+        cross.querySelector('.cT').setAttribute('cx', X(j)); cross.querySelector('.cT').setAttribute('cy', tY(T[j]));
+        cross.querySelector('.cG').setAttribute('cx', X(j)); cross.querySelector('.cG').setAttribute('cy', gY(gust[j]));
+        const i = idx[j], d = new Date(h.time[i]), pop = h.precipitation_probability[i], mm = h.precipitation[i], uv = h.uv_index ? h.uv_index[i] : null;
+        tip.hidden = false;
+        tip.innerHTML = `<b>${esc(shortWD(h.time[i].slice(0, 10)) + ' ' + h.time[i].slice(11, 16))}</b><span>${fmtT(T[j])} · ${esc(tr('feels_like').toLowerCase())} ${fmtT(A[j])}</span><span>${rainGlyph()} ${pop == null ? '–' : pop + '%'}${mm > 0 ? ' · ' + fmtP(mm) : ''}</span><span>${esc(tr('gusts'))} ${fmtW(gust[j])}${uv ? ' · UV ' + round(uv, 1) : ''}</span>`;
+        const px = Math.min(r.width - 150, Math.max(4, X(j) / W * r.width - 70));
+        tip.style.left = px + 'px';
+      };
+      hit.addEventListener('pointermove', move); hit.addEventListener('pointerdown', move);
+      hit.addEventListener('pointerleave', () => { cross.style.visibility = 'hidden'; tip.hidden = true; });
+    }
   }
 
   function badge(svg, title) { return `<span class="bg-ic" title="${title}">${svg}</span>`; }
   function renderDaily(an, sb) {
-    const days = an.slice(0, 14); if (!days.length) { $('#daily').innerHTML = ''; return; }
-    const valid = days.filter(d => d.lo != null && d.hi != null);
-    const lo = valid.length ? Math.floor(Math.min(...valid.map(d => d.lo))) : 0, hi = valid.length ? Math.ceil(Math.max(...valid.map(d => d.hi))) : 1, span = Math.max(1, hi - lo);
+    const days = an.slice(0, 14), el = $('#daily'); if (!el) return; if (!days.length) { el.innerHTML = ''; return; }
+    const ens = state.ens && state.ens.by;
+    const lows = [], highs = [];
+    days.forEach(d => { const e = ens && ens[d.date]; if (e) { lows.push(e.lo10); highs.push(e.hi90); } else { if (d.lo != null) lows.push(d.lo); if (d.hi != null) highs.push(d.hi); } });
+    const gLo = lows.length ? Math.floor(Math.min(...lows)) : 0, gHi = highs.length ? Math.ceil(Math.max(...highs)) : 1, span = Math.max(1, gHi - gLo), pos = v => (v - gLo) / span * 100;
     let html = '';
     days.forEach(d => {
-      const has = d.lo != null && d.hi != null, left = has ? (d.lo - lo) / span * 100 : 0, w = has ? (d.hi - d.lo) / span * 100 : 0; let b = '';
-      if (d.hi >= 32) b += badge(flame(d.hi >= 36 ? '#e23b3b' : '#ff7a45'), d.hi >= 36 ? tr('severe_heat') : tr('hot_day'));
+      const e = ens && ens[d.date], lo = d.lo, hi = d.hi, prob = d.prob;
+      let conf = 3; if (e) { const sp = e.hi90 - e.hi10; conf = sp <= 2.5 ? 3 : sp <= 5 ? 2 : 1; }
+      const dots = e ? [1, 2, 3].map(k => `<i class="${k <= conf ? 'on' : ''}"></i>`).join('') : '';
+      let b = '';
+      if (hi != null && hi >= 32) b += badge(flame(hi >= 36 ? '#e23b3b' : '#ff7a45'), hi >= 36 ? tr('severe_heat') : tr('hot_day'));
       if (d.code >= 95 || (sb[d.date] && stormLevel(sb[d.date].cape, sb[d.date].cin, sb[d.date].shear, d.code))) b += badge(bolt(), tr('tstorm_risk'));
       if (d.gust >= 60) b += badge(wind(), tr('strong_gusts', { g: fmtW(d.gust) }));
-      const pop = d.prob >= 20 ? `<div class="d-pop">${rainGlyph()} ${d.prob}%</div>` : '';
+      let rng = '<div class="track"></div>';
+      if (e) rng += `<div class="band" style="left:${pos(e.lo10).toFixed(1)}%;right:${(100 - pos(e.hi90)).toFixed(1)}%"></div>`;
+      if (lo != null && hi != null) rng += `<div class="bar" style="left:${pos(lo).toFixed(1)}%;right:${(100 - pos(hi)).toFixed(1)}%;background:linear-gradient(90deg,${tColor(lo)},${tColor(hi)})"></div>`;
+      const popTxt = (prob != null && prob >= 20) ? `${rainGlyph()} ${prob}%` : '';
       html += `<div class="dwrap"><div class="drow" data-i="${d.i}" role="button" tabindex="0" aria-expanded="false">
         <div class="d-day"><span class="d-wd">${fmtWD(d.date)}</span><span class="d-dt">${mdShort(d.date)}</span></div>
-        <div class="d-ic">${icon(d.code, true, false)}${pop}</div>
-        <div class="d-temp"><span class="d-lo">${fmtT(d.lo)}</span><div class="d-track"><div class="d-seg" style="left:${left}%;width:${w}%;background:linear-gradient(90deg,${tColor(d.lo)},${tColor(d.hi)})"></div></div><span class="d-hi">${fmtT(d.hi)}</span></div>
+        <div class="d-ic">${icon(d.code, true, false)}</div>
+        <div class="d-pop">${popTxt}</div>
+        <div class="d-conf" title="${esc(tr('conf_' + conf))}" aria-label="${esc(tr('conf_' + conf))}">${dots}</div>
+        <div class="d-rtemp"><span class="d-rlo">${fmtT(lo)}</span><div class="d-range">${rng}</div><span class="d-rhi">${fmtT(hi)}</span></div>
         <div class="d-badges">${b}<svg class="d-chev" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
         <div class="dexp" id="dexp-${d.i}" hidden></div></div>`;
     });
-    $('#daily').innerHTML = html;
+    el.innerHTML = html;
+    const note = $('#ensNote'); if (note) { if (state.ens && state.ens.members) { note.hidden = false; note.textContent = tr('ens_from', { n: state.ens.members }); } else note.hidden = true; }
   }
   function dItem(l, v) { return `<div class="dexp-item"><div class="di-l">${l}</div><div class="di-v">${v}</div></div>`; }
   function toggleDay(i, row) {
@@ -632,8 +788,9 @@
   }
 
   function renderAlerts(alerts) {
-    if (!alerts.length) { $('#alerts').innerHTML = `<div class="alert sev-ok"><div class="a-ic"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 13l4 4 10-10" fill="none" stroke="#7bd88f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="a-body"><div class="a-top"><span class="a-title">${tr('no_extremes')}</span></div><div class="a-desc">${tr('no_extremes_desc')}</div></div></div>`; return; }
-    $('#alerts').innerHTML = alerts.map(a => `<div class="alert sev-${a.sev}"><div class="a-ic">${a.ic}</div><div class="a-body"><div class="a-top"><span class="a-title">${esc(a.title)}</span><span class="pill">${tr('sev_' + a.sev)}</span><span class="a-when">${esc(a.when)}</span></div><div class="a-desc">${esc(a.desc)}</div></div></div>`).join('');
+    const head = `<div class="outlook-head"><span>${esc(tr('outlook_lbl'))}</span><span class="outlook-sub">${esc(tr('outlook_sub'))}</span></div>`;
+    if (!alerts.length) { $('#alerts').innerHTML = head + `<div class="alert sev-ok"><div class="a-ic"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 13l4 4 10-10" fill="none" stroke="#7bd88f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="a-body"><div class="a-top"><span class="a-title">${tr('no_extremes')}</span></div><div class="a-desc">${tr('no_extremes_desc')}</div></div></div>`; return; }
+    $('#alerts').innerHTML = head + alerts.map(a => `<div class="alert sev-${a.sev}"><div class="a-ic">${a.ic}</div><div class="a-body"><div class="a-top"><span class="a-title">${esc(a.title)}</span><span class="pill">${tr('sev_' + a.sev)}</span><span class="a-when">${esc(a.when)}</span></div><div class="a-desc">${esc(a.desc)}</div></div></div>`).join('');
   }
 
   /* ---------------- notifications ---------------- */
@@ -678,8 +835,7 @@
   function gridNear(la, lo, R) { const step = R / 4, latD = step / 111, lonD = step / (111 * Math.cos(la * Math.PI / 180)), pts = []; for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const a = la + dy * latD, b = lo + dx * lonD; if (distBearing(la, lo, a, b).km <= R) pts.push([a, b]); } return pts; }
   function gridCountry(b) { const ny = 11, nx = 13, pts = []; for (let i = 0; i < ny; i++) for (let j = 0; j < nx; j++) pts.push([b[0] + (b[2] - b[0]) * (i + .5) / ny, b[1] + (b[3] - b[1]) * (j + .5) / nx]); return pts; }
   function radiusZoom(R) { return R <= 25 ? 10 : R <= 50 ? 9 : 8; }
-  function baseUrl(dark) { return 'https://{s}.basemaps.cartocdn.com/' + (dark ? 'dark_all' : 'light_all') + '/{z}/{x}/{y}{r}.png'; }
-  function addBase() { const dark = document.documentElement.getAttribute('data-theme') !== 'light'; if (state.map.baseLayer) state.map.leaflet.removeLayer(state.map.baseLayer); state.map.baseLayer = L.tileLayer(baseUrl(dark), { attribution: '© OpenStreetMap, © CARTO', subdomains: 'abcd', maxZoom: 18 }).addTo(state.map.leaflet); state.map.baseLayer.bringToBack(); }
+  function addBase() { const dark = document.documentElement.getAttribute('data-theme') !== 'light'; if (state.map.baseLayer) state.map.leaflet.removeLayer(state.map.baseLayer); state.map.baseLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', subdomains: 'abc', maxZoom: 19, className: dark ? 'map-dark' : '' }).addTo(state.map.leaflet); state.map.baseLayer.bringToBack(); }
   function setMapStatus(t) { const e = $('#mapStatus'); if (e) e.textContent = t; }
   function clearMarkers() { state.map.markers.forEach(m => state.map.leaflet.removeLayer(m)); state.map.markers = []; }
   function clearCenter() { if (state.map.circle) { state.map.leaflet.removeLayer(state.map.circle); state.map.circle = null; } if (state.map.center) { state.map.leaflet.removeLayer(state.map.center); state.map.center = null; } }
@@ -801,49 +957,48 @@
     else { badge.hidden = false; badge.className = 'stale-badge amber'; badge.textContent = tr('stale_amber', { t: at(obsMs) }); }
   }
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2800); }
-  function showLoading(on) { $('#loading').classList.toggle('hide', !on); }
+  function showLoading(on) { const l = $('#loading'); if (l) l.classList.toggle('hide', !on); }
 
   async function load(full = true) {
     try {
-      if (full) showLoading(true);
+      if (full && !state.forecast) { renderMeteogram(); renderBriefing(null); renderBestOutside(null); }
       const fc = await getForecast(state.loc); state.forecast = fc;
       state.stormByDay = {}; const h = fc.hourly; const peakIdx = {};
       for (let i = 0; i < h.time.length; i++) { const d = h.time[i].slice(0, 10), c = h.cape ? h.cape[i] : null; if (c == null) continue; if (!(d in peakIdx) || c > h.cape[peakIdx[d]]) peakIdx[d] = i; }
       for (const d in peakIdx) { const i = peakIdx[d]; state.stormByDay[d] = { cape: h.cape[i] || 0, cin: h.convective_inhibition ? (h.convective_inhibition[i] || 0) : 0, shear: bulkShear(h.wind_speed_10m && h.wind_speed_10m[i], h.wind_direction_10m && h.wind_direction_10m[i], h.wind_speed_500hPa && h.wind_speed_500hPa[i], h.wind_direction_500hPa && h.wind_direction_500hPa[i]) }; }
-      if (!state.clim) { try { state.clim = buildClim(await getArchive(state.loc)); } catch (e) { console.warn('archive failed', e); state.clim = null; } }
       state.analysis = analyze(fc, state.clim || FALLBACK_CLIM);
       const sb = {}; state.analysis.forEach(a => sb[a.date] = state.stormByDay[a.date] || { cape: 0, cin: 0, shear: 0 }); state.stormByDate = sb;
-      const [air, nc, aur, water] = await Promise.all([getAir(state.loc).catch(() => null), getNowcast(state.loc).catch(() => null), getAurora(state.loc).catch(() => null), getWater(state.loc).catch(() => null)]);
-      state.air = air; state.nowcast = nc; state.aurora = aur; state.water = water;
-
-      renderHero(fc, state.analysis);
-      renderDetails(fc, state.analysis);
-      renderAurora();
-      renderSunMoon();
-      renderNowcast(state.nowcast);
-      renderHourly(fc); renderHourlyChart();
-      renderAir(state.air);
-      renderWater();
+      /* first paint — the weather, immediately, without waiting on archive or side feeds */
+      renderHero(fc, state.analysis); renderBriefing(fc); renderBestOutside(fc);
+      renderDetails(fc, state.analysis); renderSunMoon(); renderMeteogram();
       renderDaily(state.analysis, sb);
-      if (state.clim) renderHistory(fc, state.analysis, state.clim); else $('#history').innerHTML = '<div class="chart-card">Historical data unavailable for this location.</div>';
-      ensureStripes();
-      state.alerts = buildAlerts(state.analysis, state.clim || FALLBACK_CLIM, sb);
-      renderAlerts(state.alerts);
-      renderFaves();
-      maybeNotify();
       const off = fc.utc_offset_seconds || 0;
       const obsMs = (fc.current && fc.current.time) ? Date.parse(fc.current.time + 'Z') - off * 1000 : Date.now();
-      state.lastGood = { obsMs };
-      setUpdated(obsMs); showLoading(false);
+      state.lastGood = { obsMs }; setUpdated(obsMs);
+      state.alerts = buildAlerts(state.analysis, state.clim || FALLBACK_CLIM, sb); renderAlerts(state.alerts); renderDwd();
+      /* side feeds + archive together in the background */
+      const archiveP = state.clim ? null : getArchive(state.loc).catch(() => null);
+      const [air, nc, aur, water, dwd, ens] = await Promise.all([getAir(state.loc).catch(() => null), getNowcast(state.loc).catch(() => null), getAurora(state.loc).catch(() => null), getWater(state.loc).catch(() => null), getDwd(state.loc).catch(() => null), getEnsemble(state.loc).catch(() => null)]);
+      state.air = air; state.nowcast = nc; state.aurora = aur; state.water = water; state.dwd = dwd; state.ens = ens;
+      renderAir(air); renderNowcast(nc); renderAurora(); renderWater(); renderDwd();
+      const hs = document.querySelector('.hero-strip'); if (hs) hs.outerHTML = heroStrip(fc);
+      renderDaily(state.analysis, sb);
+      renderFaves(); maybeNotify();
+      /* climate archive — resolves the parallel fetch, fills anomaly chips, records, history */
+      if (!state.clim && archiveP) { const arc = await archiveP; if (arc) { try { state.clim = buildClim(arc); } catch (e) { state.clim = null; } } }
+      if (state.clim) { state.analysis = analyze(fc, state.clim); renderDetails(fc, state.analysis); renderDaily(state.analysis, sb); renderHistory(fc, state.analysis, state.clim); }
+      else { const hi = $('#history'); if (hi) hi.innerHTML = '<div class="chart-card">' + esc(tr('stripes_unavail')) + '</div>'; }
+      ensureStripes();
+      state.alerts = buildAlerts(state.analysis, state.clim || FALLBACK_CLIM, sb); renderAlerts(state.alerts);
     } catch (e) {
       if (sky.raf) { cancelAnimationFrame(sky.raf); sky.raf = null; }
-      console.error(e); showLoading(false); toast(tr('t_loadfail')); if (state.lastGood) setUpdated(state.lastGood.obsMs, true);
-      $('#hero').innerHTML = `<div style="padding:10px"><div class="hero-cond">${tr('err_loaded')}</div><div class="hero-feels">${esc(e.message)} — <a href="#" id="retry">retry</a></div></div>`;
+      console.error(e); toast(tr('t_loadfail')); if (state.lastGood) setUpdated(state.lastGood.obsMs, true);
+      $('#hero').innerHTML = `<div class="hero-content" style="padding:24px"><div class="hero-cond">${tr('err_loaded')}</div><div class="hero-feels">${esc(e.message)} — <a href="#" id="retry">retry</a></div></div>`;
       const r = $('#retry'); if (r) r.onclick = ev => { ev.preventDefault(); load(true); };
     }
   }
-  function setLocation(loc) { state.loc = loc; localStorage.setItem(LS.loc, JSON.stringify(loc)); state.clim = null; closeSearch(); $('#searchInput').value = ''; load(true); if (state.map.inited && state.map.scope === 'near') scanArea(); }
-  function reRender() { if (!state.forecast) return; renderHero(state.forecast, state.analysis); renderDetails(state.forecast, state.analysis); renderAurora(); renderSunMoon(); renderNowcast(state.nowcast); renderHourly(state.forecast); renderHourlyChart(); renderAir(state.air); renderWater(); renderDaily(state.analysis, state.stormByDate); if (state.clim) renderHistory(state.forecast, state.analysis, state.clim); if (state.longData) { renderStripes(state.longData); const o = $('#onthisday'); if (o) o.textContent = onThisDay(); } state.alerts = buildAlerts(state.analysis, state.clim || FALLBACK_CLIM, state.stormByDate); renderAlerts(state.alerts); }
+  function setLocation(loc) { state.loc = loc; localStorage.setItem(LS.loc, JSON.stringify(loc)); state.clim = null; state.ens = null; state.dwd = null; closeSearch(); $('#searchInput').value = ''; load(true); if (state.map.inited && state.map.scope === 'near') scanArea(); }
+  function reRender() { if (!state.forecast) return; renderHero(state.forecast, state.analysis); renderBriefing(state.forecast); renderBestOutside(state.forecast); renderDetails(state.forecast, state.analysis); renderAurora(); renderSunMoon(); renderDwd(); renderNowcast(state.nowcast); renderMeteogram(); renderAir(state.air); renderWater(); renderDaily(state.analysis, state.stormByDate); if (state.clim) renderHistory(state.forecast, state.analysis, state.clim); if (state.longData) { renderStripes(state.longData); const o = $('#onthisday'); if (o) o.textContent = onThisDay(); } state.alerts = buildAlerts(state.analysis, state.clim || FALLBACK_CLIM, state.stormByDate); renderAlerts(state.alerts); }
 
   /* ---------------- events ---------------- */
   let searchT = null, results = [];
@@ -862,7 +1017,30 @@
   document.addEventListener('click', e => { if (!e.target.closest('.search')) closeSearch(); });
   $('#daily').addEventListener('click', e => { const row = e.target.closest('.drow'); if (row) toggleDay(+row.dataset.i, row); });
   $('#daily').addEventListener('keydown', e => { const row = e.target.closest('.drow'); if (row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggleDay(+row.dataset.i, row); } });
-  $('#hourlyToggle').addEventListener('click', e => { const b = e.target.closest('button[data-m]'); if (!b) return; state.hourlyMetric = b.dataset.m; [...$('#hourlyToggle').children].forEach(x => x.classList.toggle('active', x === b)); renderHourlyChart(); });
+  function switchTab(name) {
+    state.tab = name;
+    document.querySelectorAll('.tabbar [role=tab]').forEach(b => { const on = b.dataset.tab === name; b.classList.toggle('active', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
+    document.querySelectorAll('.tab').forEach(p => { const on = p.id === 'tab-' + name; p.hidden = !on; if (on) { p.classList.remove('enter'); void p.offsetWidth; p.classList.add('enter'); } });
+    if (name === 'map') { initMap(); if (state.map.inited && state.map.leaflet) setTimeout(() => state.map.leaflet.invalidateSize(), 60); }
+    if (name === 'hours') renderMeteogram();
+    window.scrollTo(0, 0);
+  }
+  function syncSettings() {
+    const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+    [['#unitSeg', 'data-u', state.units], ['#langSeg', 'data-l', state.lang], ['#themeSeg', 'data-t', theme]].forEach(([sel, at, val]) => { const g = $(sel); if (g) [...g.children].forEach(b => b.classList.toggle('active', b.getAttribute(at) === val)); });
+    const on = ('Notification' in window) && Notification.permission === 'granted', bell = $('#bellBtn'); if (bell) { bell.classList.toggle('on', on); bell.textContent = on ? tr('alerts_on') : tr('alerts_enable'); }
+  }
+  function openSheet() { const s = $('#settingsSheet'); if (s) { s.hidden = false; const b = $('#settingsBtn'); if (b) b.setAttribute('aria-expanded', 'true'); syncSettings(); } }
+  function closeSheet() { const s = $('#settingsSheet'); if (s) { s.hidden = true; const b = $('#settingsBtn'); if (b) b.setAttribute('aria-expanded', 'false'); } }
+  $('#tabbar').addEventListener('click', e => { const b = e.target.closest('[role=tab]'); if (b) switchTab(b.dataset.tab); });
+  $('#meteoRange').addEventListener('click', e => { const b = e.target.closest('button[data-h]'); if (!b) return; state.meteoH = +b.dataset.h; [...$('#meteoRange').children].forEach(x => x.classList.toggle('active', x === b)); renderMeteogram(); });
+  $('#settingsBtn').addEventListener('click', openSheet);
+  $('#sheetClose').addEventListener('click', closeSheet);
+  $('#sheetBackdrop').addEventListener('click', closeSheet);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+  $('#unitSeg').addEventListener('click', e => { const b = e.target.closest('button[data-u]'); if (!b || b.dataset.u === state.units) return; state.units = b.dataset.u; localStorage.setItem(LS.units, state.units); reRender(); syncSettings(); });
+  $('#langSeg').addEventListener('click', e => { const b = e.target.closest('button[data-l]'); if (!b || b.dataset.l === state.lang) return; state.lang = b.dataset.l; localStorage.setItem('aurora.lang', state.lang); applyStaticI18n(); reRender(); loadFact(); setBell(); setUpdated(state.lastGood && state.lastGood.obsMs); if (state.map.inited) scanArea(); syncSettings(); });
+  $('#themeSeg').addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (!b) return; applyTheme(b.dataset.t); syncSettings(); });
   $('#faves').addEventListener('click', e => {
     const rm = e.target.closest('.fc-rm');
     if (rm) { state.faves.splice(+rm.dataset.i, 1); saveFaves(); renderFaves(); const st = $('#faveStar'); if (st) st.classList.toggle('on', isFave(state.loc)); return; }
@@ -880,21 +1058,18 @@
     if (!navigator.geolocation) { toast(tr('t_geona')); return; } toast(tr('t_locating'));
     navigator.geolocation.getCurrentPosition(p => setLocation({ name: state.lang === 'de' ? 'Mein Standort' : 'My location', admin1: '', country: '', lat: +p.coords.latitude.toFixed(4), lon: +p.coords.longitude.toFixed(4) }), () => toast(tr('t_geodenied')));
   });
-  $('#unitBtn').addEventListener('click', () => { state.units = state.units === 'c' ? 'f' : 'c'; localStorage.setItem(LS.units, state.units); $('#unitBtn').textContent = state.units === 'c' ? '°C' : '°F'; reRender(); });
   function applyTheme(t) {
     document.documentElement.setAttribute('data-theme', t); localStorage.setItem(LS.theme, t);
-    $('#themeIcon').innerHTML = t === 'light' ? '<circle cx="12" cy="12" r="5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="5" y1="5" x2="6.5" y2="6.5"/><line x1="17.5" y1="17.5" x2="19" y2="19"/><line x1="5" y1="19" x2="6.5" y2="17.5"/><line x1="17.5" y1="6.5" x2="19" y2="5"/></g>' : '<path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" fill="currentColor"/>';
-    if (state.forecast) { renderHourlyChart(); if (state.clim) drawChart(state.analysis.slice(0, 14)); }
+    const tm = document.querySelector('meta[name=theme-color]'); if (tm) tm.content = t === 'light' ? '#EAF0F8' : '#080B14';
+    if (state.forecast) { renderMeteogram(); renderDaily(state.analysis, state.stormByDate); if (state.clim && state.analysis) drawChart(state.analysis.slice(0, 14)); }
     if (state.map.inited) addBase();
   }
-  $('#themeBtn').addEventListener('click', () => applyTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'));
   $('#refreshBtn').addEventListener('click', () => { toast(tr('t_refreshing')); load(false); });
-  $('#langBtn').addEventListener('click', () => { state.lang = state.lang === 'de' ? 'en' : 'de'; localStorage.setItem('aurora.lang', state.lang); applyStaticI18n(); reRender(); loadFact(); setBell(); setUpdated(state.lastGood && state.lastGood.obsMs); if (state.map.inited) scanArea(); });
   $('#bellBtn').addEventListener('click', async () => {
     if (!('Notification' in window)) { toast(tr('t_notifns')); return; }
     if (Notification.permission === 'denied') { toast(tr('t_notifblk')); return; }
-    if (Notification.permission === 'granted') { toast(tr('t_alertson')); localStorage.removeItem('aurora.notified' + keyLoc()); maybeNotify(); setBell(); return; }
-    const p = await Notification.requestPermission(); setBell();
+    if (Notification.permission === 'granted') { toast(tr('t_alertson')); localStorage.removeItem('aurora.notified' + keyLoc()); maybeNotify(); setBell(); syncSettings(); return; }
+    const p = await Notification.requestPermission(); setBell(); syncSettings();
     if (p === 'granted') { toast(tr('t_alertsen')); localStorage.removeItem('aurora.notified' + keyLoc()); maybeNotify(); } else toast(tr('t_notifno'));
   });
 
@@ -902,8 +1077,7 @@
   (function init() {
     applyTheme(localStorage.getItem(LS.theme) || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
     applyStaticI18n();
-    $('#unitBtn').textContent = state.units === 'c' ? '°C' : '°F';
-    setBell();
+    setBell(); syncSettings();
     renderFaves();
     startClock();
     loadFact();
@@ -911,11 +1085,6 @@
     if (state.timer) clearInterval(state.timer);
     state.timer = setInterval(() => load(false), 15 * 60 * 1000);
     if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js').catch(() => {});
-    const mapEl = $('#map');
-    if (mapEl) {
-      if (window.IntersectionObserver) { const mo = new IntersectionObserver(es => { es.forEach(e => { if (e.isIntersecting) { initMap(); mo.disconnect(); } }); }, { rootMargin: '300px' }); mo.observe(mapEl); }
-      window.addEventListener('scroll', () => initMap(), { once: true, passive: true });
-      window.addEventListener('resize', () => { if (state.map.leaflet) state.map.leaflet.invalidateSize(); if (sky.canvas) { skyResize(); skyBuild(sky.cat, sky.isDay); } });
-    }
+    let rsz; window.addEventListener('resize', () => { if (state.map.leaflet) state.map.leaflet.invalidateSize(); if (sky.canvas) { skyResize(); skyBuild(sky.cat, sky.isDay); } clearTimeout(rsz); rsz = setTimeout(() => { if (state.tab === 'hours') renderMeteogram(); }, 180); });
   })();
 })();

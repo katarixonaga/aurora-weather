@@ -1,5 +1,5 @@
 // Aurora Weather service worker — offline shell + network-first so deploys show immediately.
-const CACHE = 'aurora-v5';
+const CACHE = 'aurora-v6';
 const SHELL = ['./', './index.html', './styles.css', './app.js', './i18n.js', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
